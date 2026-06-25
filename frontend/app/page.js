@@ -6,6 +6,7 @@ import { getPortalMe, getPortalMensalidades } from '../lib/api'
 import NavBar from '../components/NavBar'
 import MensalidadeCard from '../components/MensalidadeCard'
 import StatusBadge from '../components/StatusBadge'
+import { getMe } from '../lib/api'
 
 export default function Dashboard() {
   const router = useRouter()
@@ -20,6 +21,12 @@ export default function Dashboard() {
       if (!session) { router.replace('/login'); return }
 
       try {
+        const profile = await getMe(session.access_token)
+        if (profile.tipo !== 'aluno') {
+          router.replace('/admin')
+          return
+        }
+
         const [dadosAluno, dadosMens] = await Promise.all([
           getPortalMe(session.access_token),
           getPortalMensalidades(session.access_token),

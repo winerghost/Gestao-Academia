@@ -11,10 +11,10 @@ def _aluno_do_usuario():
         supabase.table("alunos")
         .select("id, status, frequencia_habilitada")
         .eq("profile_id", g.user_id)
-        .single()
+        .maybe_single()
         .execute()
     )
-    return result.data
+    return result.data if result else None
 
 
 @portal_bp.get("/me")
@@ -24,14 +24,14 @@ def me():
     if not aluno:
         return jsonify({"error": "Aluno não encontrado para este usuário"}), 404
 
-    profile = (
+    profile_result = (
         supabase.table("profiles")
         .select("nome, telefone")
         .eq("id", g.user_id)
-        .single()
+        .maybe_single()
         .execute()
-        .data
     )
+    profile = profile_result.data if profile_result else {}
 
     planos_ativos = (
         supabase.table("aluno_planos")
