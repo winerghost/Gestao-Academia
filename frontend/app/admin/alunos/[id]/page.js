@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '../../../../lib/supabase'
-import { getAluno, atualizarAluno, vincularPlanoAluno, getMensalidades, getPlanos, pagarMensalidade } from '../../../../lib/api'
+import { getAluno, atualizarAluno, vincularPlanoAluno, getMensalidades, getPlanos, pagarMensalidade, getAvaliacoes } from '../../../../lib/api'
 
 const BADGE = {
   ativo: 'bg-green-100 text-green-700',
@@ -30,6 +30,7 @@ export default function AlunoDetalhe() {
   const [aluno, setAluno] = useState(null)
   const [mensalidades, setMensalidades] = useState([])
   const [planos, setPlanos] = useState([])
+  const [avaliacoes, setAvaliacoes] = useState([])
   const [loading, setLoading] = useState(true)
   const [editando, setEditando] = useState(false)
   const [form, setForm] = useState({})
@@ -38,10 +39,11 @@ export default function AlunoDetalhe() {
   const [salvando, setSalvando] = useState(false)
 
   async function carregar(t) {
-    const [a, m, p] = await Promise.all([
+    const [a, m, p, av] = await Promise.all([
       getAluno(t, id),
       getMensalidades(t, { aluno_id: id }),
       getPlanos(t),
+      getAvaliacoes(t, { aluno_id: id }),
     ])
     setAluno(a)
     setForm({
@@ -52,6 +54,7 @@ export default function AlunoDetalhe() {
     })
     setMensalidades(m)
     setPlanos(p)
+    setAvaliacoes(av)
   }
 
   useEffect(() => {
@@ -229,6 +232,49 @@ export default function AlunoDetalhe() {
             <Info label="Total pago" value={`R$ ${totalPago.toFixed(2)}`} />
           </dl>
         </div>
+      </div>
+
+      {/* Avaliações físicas */}
+      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-700">Avaliações físicas</h2>
+          <Link
+            href={`/admin/avaliacoes/nova?aluno_id=${id}`}
+            className="text-xs text-orange-500 hover:text-orange-700 font-medium transition"
+          >
+            ➕ Nova avaliação
+          </Link>
+        </div>
+        {avaliacoes.length === 0 ? (
+          <p className="text-center text-gray-400 py-6 text-sm">Nenhuma avaliação cadastrada.</p>
+        ) : (
+          <table className="w-full">
+            <thead className="bg-gray-50">
+              <tr>
+                {['Data', 'Peso', 'Altura', 'IMC', '% Gordura', 'Massa Magra', ''].map(h => (
+                  <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {avaliacoes.map(av => (
+                <tr key={av.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 text-sm text-gray-700">{av.data_avaliacao}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700">{av.peso_kg ? `${av.peso_kg} kg` : '—'}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700">{av.altura_cm ? `${av.altura_cm} cm` : '—'}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700">{av.imc ?? '—'}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700">{av.gordura_corporal ? `${av.gordura_corporal}%` : '—'}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700">{av.massa_magra_kg ? `${av.massa_magra_kg} kg` : '—'}</td>
+                  <td className="px-4 py-3">
+                    <Link href={`/admin/avaliacoes/${av.id}`} className="text-orange-500 hover:text-orange-700 text-xs font-medium">
+                      Ver →
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {/* Mensalidades */}

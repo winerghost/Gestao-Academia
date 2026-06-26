@@ -10,6 +10,7 @@ const NAV = [
   { href: '/admin',               label: 'Dashboard',    icon: '⊞',  exact: true },
   { href: '/admin/alunos',        label: 'Alunos',       icon: '👥' },
   { href: '/admin/mensalidades',  label: 'Mensalidades', icon: '💳' },
+  { href: '/admin/avaliacoes',    label: 'Avaliações',   icon: '📊' },
   { href: '/admin/instrutores',   label: 'Instrutores',  icon: '🏋️' },
   { href: '/admin/planos',        label: 'Planos',       icon: '📋' },
   { href: '/admin/relatorios',    label: 'Relatórios',   icon: '📄' },
@@ -126,7 +127,7 @@ export default function AdminLayout({ children }) {
 
       {/* Overlay para fechar dropdown */}
       {userMenuOpen && (
-        <div className="fixed inset-0 z-30" onClick={() => setUserMenuOpen(false)} />
+        <div className="fixed inset-0 z-20" onClick={() => setUserMenuOpen(false)} />
       )}
 
       {/* ── Sidebar ─────────────────────────────────────── */}

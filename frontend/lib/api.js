@@ -92,3 +92,16 @@ export const pagarMensalidade = (token, id) =>
 export const getDashboardAlunos = (token) => fetcher('/dashboard/alunos', token)
 export const getDashboardFinanceiro = (token) => fetcher('/dashboard/financeiro', token)
 export const getDashboardFrequencia = (token) => fetcher('/dashboard/frequencia', token)
+
+// Avaliações
+export const getAvaliacoes = (token, params = {}) => {
+  const qs = new URLSearchParams(params).toString()
+  return fetcher(`/avaliacoes${qs ? `?${qs}` : ''}`, token)
+}
+export const getAvaliacao = (token, id) => fetcher(`/avaliacoes/${id}`, token)
+export const criarAvaliacao = (token, data) =>
+  fetcher('/avaliacoes', token, { method: 'POST', body: JSON.stringify(data) })
+export const atualizarAvaliacao = (token, id, data) =>
+  fetcher(`/avaliacoes/${id}`, token, { method: 'PUT', body: JSON.stringify(data) })
+export const deletarAvaliacao = (token, id) =>
+  fetcher(`/avaliacoes/${id}`, token, { method: 'DELETE' })

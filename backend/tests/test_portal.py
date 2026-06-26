@@ -40,10 +40,10 @@ def test_portal_me_retorna_dados_do_aluno(client):
         profile_mock = MagicMock()
         planos_mock = MagicMock()
 
-        aluno_mock.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
+        aluno_mock.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
             data={"id": "aluno-1", "status": "ativo", "frequencia_habilitada": True}
         )
-        profile_mock.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
+        profile_mock.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
             data={"nome": "João Silva", "telefone": "11999999999"}
         )
         planos_mock.select.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(
@@ -77,7 +77,7 @@ def test_portal_me_aluno_nao_encontrado(client):
         _mock_auth(mock_auth)
 
         aluno_mock = MagicMock()
-        aluno_mock.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
+        aluno_mock.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
             data=None
         )
         mock_supa.table.return_value = aluno_mock
@@ -103,7 +103,7 @@ def test_portal_mensalidades_retorna_lista(client):
         ap_mock = MagicMock()
         mens_mock = MagicMock()
 
-        aluno_mock.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
+        aluno_mock.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
             data={"id": "aluno-1", "status": "ativo", "frequencia_habilitada": False}
         )
         ap_mock.select.return_value.eq.return_value.execute.return_value = MagicMock(
@@ -148,7 +148,7 @@ def test_portal_mensalidades_sem_aluno_retorna_vazio(client):
         _mock_auth(mock_auth)
 
         aluno_mock = MagicMock()
-        aluno_mock.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
+        aluno_mock.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
             data=None
         )
         mock_supa.table.return_value = aluno_mock
@@ -174,7 +174,7 @@ def test_portal_frequencias_habilitada_retorna_lista(client):
         aluno_mock = MagicMock()
         freq_mock = MagicMock()
 
-        aluno_mock.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
+        aluno_mock.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
             data={"id": "aluno-1", "status": "ativo", "frequencia_habilitada": True}
         )
         freq_mock.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = MagicMock(
@@ -207,7 +207,7 @@ def test_portal_frequencias_desabilitada_retorna_vazio(client):
         _mock_auth(mock_auth)
 
         aluno_mock = MagicMock()
-        aluno_mock.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
+        aluno_mock.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
             data={"id": "aluno-1", "status": "ativo", "frequencia_habilitada": False}
         )
         mock_supa.table.return_value = aluno_mock

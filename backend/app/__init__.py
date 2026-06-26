@@ -9,6 +9,7 @@ from .mensalidades import mensalidades_bp
 from .dashboard import dashboard_bp
 from .relatorios import relatorios_bp
 from .portal import portal_bp
+from .avaliacoes import avaliacoes_bp
 
 
 def create_app():
@@ -25,6 +26,7 @@ def create_app():
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(relatorios_bp)
     app.register_blueprint(portal_bp)
+    app.register_blueprint(avaliacoes_bp)
 
     if not app.config.get("TESTING"):
         from .mensalidades.jobs import iniciar_scheduler
