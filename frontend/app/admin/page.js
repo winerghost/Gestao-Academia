@@ -24,21 +24,27 @@ export default function AdminDashboard() {
   const [fin, setFin] = useState(null)
   const [freq, setFreq] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [erro, setErro] = useState('')
 
   useEffect(() => {
     async function carregar() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.replace('/login'); return }
       const t = session.access_token
-      const [a, f, fr] = await Promise.all([
-        getDashboardAlunos(t),
-        getDashboardFinanceiro(t),
-        getDashboardFrequencia(t),
-      ])
-      setAlunos(a)
-      setFin(f)
-      setFreq(fr)
-      setLoading(false)
+      try {
+        const [a, f, fr] = await Promise.all([
+          getDashboardAlunos(t),
+          getDashboardFinanceiro(t),
+          getDashboardFrequencia(t),
+        ])
+        setAlunos(a)
+        setFin(f)
+        setFreq(fr)
+      } catch (err) {
+        setErro(err.message || 'Erro ao carregar dashboard.')
+      } finally {
+        setLoading(false)
+      }
     }
     carregar()
   }, [router])
@@ -48,6 +54,12 @@ export default function AdminDashboard() {
     : ''
 
   if (loading) return <p className="text-gray-400">Carregando...</p>
+
+  if (erro) return (
+    <div className="bg-red-50 border border-red-200 rounded-xl px-6 py-4 text-red-700 text-sm">
+      {erro}
+    </div>
+  )
 
   return (
     <div className="space-y-6">

@@ -1,7 +1,18 @@
 from functools import wraps
+import httpx
 from flask import request, jsonify, g
 from gotrue.errors import AuthApiError
 from ..supabase_client import supabase
+
+
+def _with_retry(fn, retries: int = 1):
+    """Retry once on HTTP/2 connection drops (server closes idle connections)."""
+    for attempt in range(retries + 1):
+        try:
+            return fn()
+        except httpx.RemoteProtocolError:
+            if attempt >= retries:
+                raise
 
 
 def require_auth(f):
@@ -47,19 +58,25 @@ def _get_token():
 
 
 def _validate_token(token):
-    try:
+    def _call():
         response = supabase.auth.get_user(token)
         return response.user
-    except AuthApiError:
+
+    try:
+        return _with_retry(_call)
+    except (AuthApiError, httpx.RemoteProtocolError):
         return None
 
 
 def _get_profile(user_id):
-    result = (
-        supabase.table("profiles")
-        .select("tipo")
-        .eq("id", user_id)
-        .single()
-        .execute()
-    )
-    return result.data if result.data else None
+    def _query():
+        result = (
+            supabase.table("profiles")
+            .select("tipo")
+            .eq("id", user_id)
+            .single()
+            .execute()
+        )
+        return result.data if result.data else None
+
+    return _with_retry(_query)

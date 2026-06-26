@@ -21,6 +21,7 @@ export default function AvaliacoesPage() {
   const [alunos,     setAlunos]     = useState([])
   const [filtroAluno, setFiltroAluno] = useState('')
   const [loading,    setLoading]    = useState(true)
+  const [erro,       setErro]       = useState('')
 
   async function carregar(t, aluno_id = '') {
     const params = aluno_id ? { aluno_id } : {}
@@ -33,12 +34,17 @@ export default function AvaliacoesPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.replace('/login'); return }
       setToken(session.access_token)
-      const [, a] = await Promise.all([
-        carregar(session.access_token),
-        getAlunos(session.access_token),
-      ])
-      setAlunos(a)
-      setLoading(false)
+      try {
+        const [, a] = await Promise.all([
+          carregar(session.access_token),
+          getAlunos(session.access_token),
+        ])
+        setAlunos(a)
+      } catch (err) {
+        setErro(err.message || 'Erro ao carregar avaliações.')
+      } finally {
+        setLoading(false)
+      }
     }
     init()
   }, [router])
