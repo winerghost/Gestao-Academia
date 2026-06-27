@@ -152,7 +152,7 @@ export default function PlanosPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Planos</h1>
           <p className="text-sm text-gray-500 mt-1">{planos.length} plano(s) cadastrado(s)</p>
@@ -173,7 +173,7 @@ export default function PlanosPage() {
           <h2 className="text-sm font-semibold text-gray-700 mb-4">
             {editando ? 'Editar plano' : 'Novo plano'}
           </h2>
-          <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
+          <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="col-span-2">
               <label className="text-xs text-gray-500 mb-1 block">Nome *</label>
               <input className={input} value={form.nome} onChange={e => set('nome', e.target.value)} required

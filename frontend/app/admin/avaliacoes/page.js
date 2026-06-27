@@ -59,7 +59,7 @@ export default function AvaliacoesPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Avaliações Físicas</h1>
           <p className="text-sm text-gray-500 mt-1">{avaliacoes.length} avaliação(ões) encontrada(s)</p>
@@ -102,6 +102,7 @@ export default function AvaliacoesPage() {
         {avaliacoes.length === 0 ? (
           <p className="text-center text-gray-400 py-12 text-sm">Nenhuma avaliação encontrada.</p>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
@@ -151,6 +152,7 @@ export default function AvaliacoesPage() {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>

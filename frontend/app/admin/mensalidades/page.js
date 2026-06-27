@@ -94,6 +94,7 @@ export default function MensalidadesPage() {
         ) : mensalidades.length === 0 ? (
           <p className="text-center text-gray-400 py-12">Nenhuma mensalidade encontrada.</p>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
@@ -138,6 +139,7 @@ export default function MensalidadesPage() {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>

@@ -47,7 +47,7 @@ export default function AlunosPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Alunos</h1>
           <p className="text-sm text-gray-500 mt-1">{alunos.length} aluno(s) cadastrado(s)</p>
@@ -65,7 +65,7 @@ export default function AlunosPage() {
           placeholder="Buscar por nome ou CPF..."
           value={busca}
           onChange={e => setBusca(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white w-64"
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white w-full sm:w-64"
         />
         <div className="flex gap-2">
           {FILTROS.map(f => (
@@ -85,6 +85,7 @@ export default function AlunosPage() {
         ) : filtrados.length === 0 ? (
           <p className="text-center text-gray-400 py-12">Nenhum aluno encontrado.</p>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
@@ -117,6 +118,7 @@ export default function AlunosPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>

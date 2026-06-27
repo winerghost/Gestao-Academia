@@ -55,7 +55,7 @@ export default function InstrutoresPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Instrutores</h1>
           <p className="text-sm text-gray-500 mt-1">{instrutores.length} instrutor(es) cadastrado(s)</p>
@@ -70,7 +70,7 @@ export default function InstrutoresPage() {
       {mostraForm && (
         <div className="bg-white rounded-xl shadow-sm p-5 mb-6">
           <h2 className="text-sm font-semibold text-gray-700 mb-4">Cadastrar novo instrutor</h2>
-          <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
+          <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-xs text-gray-500 mb-1 block">Nome *</label>
               <input className={input} value={form.nome} onChange={e => set('nome', e.target.value)} required placeholder="Maria Santos" />
@@ -121,6 +121,7 @@ export default function InstrutoresPage() {
         ) : instrutores.length === 0 ? (
           <p className="text-center text-gray-400 py-12">Nenhum instrutor cadastrado.</p>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
@@ -149,6 +150,7 @@ export default function InstrutoresPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>
