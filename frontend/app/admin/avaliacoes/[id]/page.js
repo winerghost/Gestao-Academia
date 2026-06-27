@@ -167,37 +167,57 @@ function BodyMap({ av }) {
 
       <div className="flex justify-center">
         <svg viewBox="-50 0 320 430" className="w-full" style={{ maxWidth: 380 }}>
-          {/* Gradiente para dar volume (sensação 3D) à silhueta */}
+          {/* Gradiente (volume) + sombra projetada (profundidade 3D) */}
           <defs>
-            <linearGradient id="bodyGrad" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%"   stopColor="#eef2f6" />
-              <stop offset="45%"  stopColor="#d7dee7" />
-              <stop offset="100%" stopColor="#bcc7d4" />
+            <linearGradient id="bodyGrad" x1="0" y1="0" x2="1" y2="0.12">
+              <stop offset="0%"   stopColor="#f1f5f9" />
+              <stop offset="42%"  stopColor="#d8e0ea" />
+              <stop offset="100%" stopColor="#b4c0ce" />
             </linearGradient>
+            <filter id="bodyShadow" x="-25%" y="-10%" width="150%" height="125%">
+              <feDropShadow dx="0" dy="2.5" stdDeviation="3.5" floodColor="#94a0b0" floodOpacity="0.35" />
+            </filter>
           </defs>
 
-          {/* ── Silhueta ── */}
-          <g fill="url(#bodyGrad)" stroke="#b3bfcd" strokeWidth="1">
+          {/* ── Silhueta anatômica (atlética, visão anterior) ── */}
+          <g fill="url(#bodyGrad)" stroke="#a9b5c3" strokeWidth="1" filter="url(#bodyShadow)">
             {/* Cabeça e pescoço */}
-            <ellipse cx="120" cy="40" rx="22" ry="25" />
-            <path d="M 111,60 C 111,72 109,76 104,80 L 136,80 C 131,76 129,72 129,60 Z" />
-            {/* Tronco (ampulheta) */}
-            <path d="M 90,84
-                     C 78,92 84,150 100,196
-                     C 90,224 92,250 104,260
-                     Q 120,266 136,260
-                     C 148,250 150,224 140,196
-                     C 156,150 162,92 150,84
-                     C 140,76 100,76 90,84 Z" />
-            {/* Braços (afilando até o punho) */}
-            <path d="M 88,88 C 70,96 64,170 66,236 C 66,250 58,250 56,236 C 52,168 60,98 78,86 Z" />
-            <path d="M 152,88 C 170,96 176,170 174,236 C 174,250 182,250 184,236 C 188,168 180,98 162,86 Z" />
-            {/* Pernas (afilando até o tornozelo) */}
-            <path d="M 104,258 C 98,300 96,360 100,402 C 100,412 88,412 88,402 C 86,352 88,300 92,258 Z" />
-            <path d="M 156,258 C 162,300 164,360 160,402 C 160,412 172,412 172,402 C 174,352 172,300 168,258 Z" />
+            <ellipse cx="120" cy="38" rx="21" ry="24" />
+            <path d="M 111,58 C 111,70 109,74 105,78 L 135,78 C 131,74 129,70 129,58 Z" />
+            {/* Tronco (V-taper: ombros largos, cintura estreita) */}
+            <path d="M 110,76
+                     C 100,80 92,86 84,92
+                     C 80,124 78,156 96,194
+                     C 92,216 94,232 106,244
+                     Q 120,250 134,244
+                     C 146,232 148,216 144,194
+                     C 162,156 160,124 156,92
+                     C 148,86 140,80 130,76
+                     C 126,82 114,82 110,76 Z" />
+            {/* Braços (deltóide → afila até o punho) */}
+            <path d="M 86,90 C 66,92 58,124 58,162 C 58,194 61,222 66,242 C 68,250 58,251 55,242 C 50,212 47,150 54,108 C 59,92 74,84 86,90 Z" />
+            <path d="M 154,90 C 174,92 182,124 182,162 C 182,194 179,222 174,242 C 172,250 182,251 185,242 C 190,212 193,150 186,108 C 181,92 166,84 154,90 Z" />
+            {/* Mãos */}
+            <ellipse cx="61"  cy="254" rx="7" ry="9" />
+            <ellipse cx="179" cy="254" rx="7" ry="9" />
+            {/* Pernas (coxa → afila até o tornozelo) */}
+            <path d="M 118,240 C 104,272 100,330 104,380 C 106,400 109,410 112,416 C 114,422 99,422 97,416 C 92,402 86,355 88,300 C 90,266 98,246 110,240 Z" />
+            <path d="M 122,240 C 136,272 140,330 136,380 C 134,400 131,410 128,416 C 126,422 141,422 143,416 C 148,402 154,355 152,300 C 150,266 142,246 130,240 Z" />
             {/* Pés */}
-            <ellipse cx="96"  cy="410" rx="13" ry="7" />
-            <ellipse cx="164" cy="410" rx="13" ry="7" />
+            <ellipse cx="104" cy="419" rx="12" ry="6" />
+            <ellipse cx="136" cy="419" rx="12" ry="6" />
+          </g>
+
+          {/* Linhas de definição muscular (sutis, sobre o corpo) */}
+          <g fill="none" stroke="#9aa7b6" strokeWidth="1.1" strokeLinecap="round" opacity="0.5">
+            <path d="M 97,93 Q 120,101 143,93" />        {/* clavícula */}
+            <path d="M 120,101 L 120,150" />              {/* esterno */}
+            <path d="M 99,107 Q 120,127 141,107" />       {/* linha peitoral */}
+            <path d="M 120,150 L 120,189" />              {/* linha abdominal */}
+            <path d="M 109,163 L 131,163" />
+            <path d="M 110,175 L 130,175" />
+            <path d="M 99,361 Q 104,367 109,361" />       {/* joelho esq. */}
+            <path d="M 131,361 Q 136,367 141,361" />      {/* joelho dir. */}
           </g>
 
           {/* ── Anotações ── */}
