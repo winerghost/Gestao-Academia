@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '../../../../lib/supabase'
@@ -35,7 +35,7 @@ const VAZIO = {
   pressao_arterial: '', observacoes: '',
 }
 
-export default function NovaAvaliacaoPage() {
+function NovaAvaliacaoForm() {
   const router      = useRouter()
   const params      = useSearchParams()
   const [token,      setToken]      = useState('')
@@ -204,5 +204,15 @@ export default function NovaAvaliacaoPage() {
         </div>
       </form>
     </div>
+  )
+}
+
+// useSearchParams() exige um boundary de Suspense para o build de produção
+// conseguir pré-renderizar a página.
+export default function NovaAvaliacaoPage() {
+  return (
+    <Suspense fallback={<p className="text-gray-400 py-8">Carregando...</p>}>
+      <NovaAvaliacaoForm />
+    </Suspense>
   )
 }
