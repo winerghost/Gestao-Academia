@@ -48,6 +48,7 @@ export default function AlunoDetalhe() {
     setAluno(a)
     setForm({
       cpf: a.cpf || '',
+      telefone: a.profiles?.telefone || '',
       data_nascimento: a.data_nascimento || '',
       endereco: a.endereco || '',
       frequencia_habilitada: a.frequencia_habilitada || false,
@@ -144,7 +145,11 @@ export default function AlunoDetalhe() {
             <div className="space-y-3">
               <div>
                 <label className="text-xs text-gray-500">CPF</label>
-                <input className={input} value={form.cpf} onChange={e => setForm(f => ({ ...f, cpf: e.target.value }))} />
+                <input className={input} placeholder="000.000.000-00" value={form.cpf} onChange={e => setForm(f => ({ ...f, cpf: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500">Telefone</label>
+                <input className={input} value={form.telefone} onChange={e => setForm(f => ({ ...f, telefone: e.target.value }))} placeholder="(11) 99999-9999" />
               </div>
               <div>
                 <label className="text-xs text-gray-500">Data de nascimento</label>
@@ -152,7 +157,7 @@ export default function AlunoDetalhe() {
               </div>
               <div>
                 <label className="text-xs text-gray-500">Endereço</label>
-                <input className={input} value={form.endereco} onChange={e => setForm(f => ({ ...f, endereco: e.target.value }))} />
+                <input className={input} placeholder="Rua, número, bairro, cidade" value={form.endereco} onChange={e => setForm(f => ({ ...f, endereco: e.target.value }))} />
               </div>
               <div className="flex items-center gap-2">
                 <input type="checkbox" id="freqEdit" checked={form.frequencia_habilitada}

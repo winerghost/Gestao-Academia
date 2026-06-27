@@ -8,7 +8,7 @@ import { criarAluno } from '../../../../lib/api'
 export default function NovoAluno() {
   const router = useRouter()
   const [form, setForm] = useState({
-    nome: '', email: '', senha: '', cpf: '',
+    nome: '', email: '', senha: '', cpf: '', telefone: '',
     data_nascimento: '', endereco: '', status: 'ativo',
     frequencia_habilitada: false,
   })
@@ -60,6 +60,10 @@ export default function NovoAluno() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">CPF *</label>
             <input className={input} value={form.cpf} onChange={e => set('cpf', e.target.value)} required placeholder="000.000.000-00" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Telefone</label>
+            <input className={input} value={form.telefone} onChange={e => set('telefone', e.target.value)} placeholder="(11) 99999-9999" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Data de nascimento</label>

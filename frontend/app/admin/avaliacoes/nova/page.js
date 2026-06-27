@@ -125,22 +125,22 @@ function NovaAvaliacaoForm() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
               <label className="text-xs text-gray-500 mb-1 block">Peso (kg)</label>
-              <input type="number" step="0.1" min="0" className={input} placeholder="75.0"
+              <input type="number" step="0.1" min="0" className={input} placeholder="Ex: 75.5"
                 value={form.peso_kg} onChange={e => set('peso_kg', e.target.value)} />
             </div>
             <div>
               <label className="text-xs text-gray-500 mb-1 block">Altura (cm)</label>
-              <input type="number" step="0.1" min="0" className={input} placeholder="175.0"
+              <input type="number" step="0.1" min="0" className={input} placeholder="Ex: 180"
                 value={form.altura_cm} onChange={e => set('altura_cm', e.target.value)} />
             </div>
             <div>
               <label className="text-xs text-gray-500 mb-1 block">% Gordura corporal</label>
-              <input type="number" step="0.1" min="0" max="100" className={input} placeholder="18.5"
+              <input type="number" step="0.1" min="0" max="100" className={input} placeholder="Ex: 20.5"
                 value={form.gordura_corporal} onChange={e => set('gordura_corporal', e.target.value)} />
             </div>
             <div>
               <label className="text-xs text-gray-500 mb-1 block">Massa magra (kg)</label>
-              <input type="number" step="0.1" min="0" className={input} placeholder="61.0"
+              <input type="number" step="0.1" min="0" className={input} placeholder="Ex: 60.5"
                 value={form.massa_magra_kg} onChange={e => set('massa_magra_kg', e.target.value)} />
             </div>
           </div>
@@ -156,15 +156,15 @@ function NovaAvaliacaoForm() {
           <h2 className="text-sm font-semibold text-gray-700 mb-4">Circunferências (cm)</h2>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             {[
-              { key: 'circ_cintura',  label: 'Cintura' },
-              { key: 'circ_quadril',  label: 'Quadril' },
-              { key: 'circ_braco',    label: 'Braço' },
-              { key: 'circ_coxa',     label: 'Coxa' },
-              { key: 'circ_peito',    label: 'Peito' },
-            ].map(({ key, label }) => (
+              { key: 'circ_cintura',  label: 'Cintura', placeholder: 'Ex: 85.5' },
+              { key: 'circ_quadril',  label: 'Quadril', placeholder: 'Ex: 95.0' },
+              { key: 'circ_braco',    label: 'Braço', placeholder: 'Ex: 32.5' },
+              { key: 'circ_coxa',     label: 'Coxa', placeholder: 'Ex: 55.0' },
+              { key: 'circ_peito',    label: 'Peito', placeholder: 'Ex: 100.0' },
+            ].map(({ key, label, placeholder }) => (
               <div key={key}>
                 <label className="text-xs text-gray-500 mb-1 block">{label}</label>
-                <input type="number" step="0.1" min="0" className={input} placeholder="—"
+                <input type="number" step="0.1" min="0" className={input} placeholder={placeholder}
                   value={form[key]} onChange={e => set(key, e.target.value)} />
               </div>
             ))}
@@ -177,12 +177,12 @@ function NovaAvaliacaoForm() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="text-xs text-gray-500 mb-1 block">Pressão arterial</label>
-              <input className={input} placeholder="120/80"
+              <input className={input} placeholder="Ex: 120/80"
                 value={form.pressao_arterial} onChange={e => set('pressao_arterial', e.target.value)} />
             </div>
             <div>
               <label className="text-xs text-gray-500 mb-1 block">Observações</label>
-              <input className={input} placeholder="Observações gerais..."
+              <input className={input} placeholder="Digite observações relevantes sobre a avaliação..."
                 value={form.observacoes} onChange={e => set('observacoes', e.target.value)} />
             </div>
           </div>

@@ -52,7 +52,11 @@ def criar(payload: AlunoCreateSchema):
         msg = "E-mail já cadastrado" if email_ja_cadastrado(e) else "Não foi possível criar o usuário"
         return jsonify({"error": msg}), 400
 
-    # 2. Cria registro do aluno vinculado ao profile
+    # 2. Atualiza telefone no profile (o trigger só popula nome e tipo)
+    if payload.telefone:
+        supabase.table("profiles").update({"telefone": payload.telefone}).eq("id", user_id).execute()
+
+    # 3. Cria registro do aluno vinculado ao profile
     try:
         aluno_resp = supabase.table("alunos").insert({
             "profile_id": user_id,
@@ -96,13 +100,35 @@ def buscar(aluno_id):
 def atualizar(aluno_id, payload: AlunoUpdateSchema):
     update = payload.model_dump(exclude_unset=True)
 
+    # telefone vai para profiles, não para alunos
+    telefone = update.pop("telefone", None)
+
     # cpf não pode ser apagado (NOT NULL/UNIQUE no banco)
     if update.get("cpf") is None:
         update.pop("cpf", None)
     if update.get("data_nascimento") is not None:
         update["data_nascimento"] = update["data_nascimento"].isoformat()
 
+    if not update and telefone is None:
+        return jsonify({"error": "Nenhum campo válido para atualizar"}), 400
+
+    # Busca o profile_id do aluno para atualizar profiles
+    if telefone is not None:
+        aluno_row = (
+            supabase.table("alunos")
+            .select("profile_id")
+            .eq("id", str(aluno_id))
+            .maybe_single()
+            .execute()
+        )
+        if not aluno_row or not aluno_row.data:
+            return jsonify({"error": "Aluno não encontrado"}), 404
+        supabase.table("profiles").update({"telefone": telefone}).eq("id", aluno_row.data["profile_id"]).execute()
+
     if not update:
+        aluno_row = aluno_row if telefone is not None else None
+        if aluno_row and aluno_row.data:
+            return jsonify({"message": "Perfil atualizado com sucesso"}), 200
         return jsonify({"error": "Nenhum campo válido para atualizar"}), 400
 
     result = (

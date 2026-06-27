@@ -12,6 +12,7 @@ from .dashboard import dashboard_bp
 from .relatorios import relatorios_bp
 from .portal import portal_bp
 from .avaliacoes import avaliacoes_bp
+from .configuracoes import configuracoes_bp
 
 
 def create_app():
@@ -51,6 +52,11 @@ def create_app():
             "error": "Muitas requisições em pouco tempo. Aguarde e tente de novo."
         }), 429
 
+    @app.errorhandler(500)
+    def _erro_interno(e):
+        app.logger.exception("Erro interno não tratado")
+        return jsonify({"error": "Erro interno do servidor", "detalhe": str(e)}), 500
+
     app.register_blueprint(auth_bp)
     app.register_blueprint(alunos_bp)
     app.register_blueprint(instrutores_bp)
@@ -60,6 +66,7 @@ def create_app():
     app.register_blueprint(relatorios_bp)
     app.register_blueprint(portal_bp)
     app.register_blueprint(avaliacoes_bp)
+    app.register_blueprint(configuracoes_bp)
 
     if not testing:
         from .mensalidades.jobs import iniciar_scheduler

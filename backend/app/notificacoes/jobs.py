@@ -5,6 +5,31 @@ from .email import enviar_email, template_vencimento, template_atrasada
 
 logger = logging.getLogger(__name__)
 
+# Defaults usados quando a tabela de config ainda não existe (migration 006
+# não rodada) ou a leitura falha — preserva o comportamento original.
+_CONFIG_PADRAO = {
+    "notif_lembrete_ativo": True,
+    "notif_dias_antes": 1,
+    "notif_atraso_ativo": True,
+}
+
+
+def _config_notificacoes() -> dict:
+    """Lê os parâmetros de notificação da configuração da academia."""
+    try:
+        data = (
+            supabase.table("academia_config")
+            .select("notif_lembrete_ativo, notif_dias_antes, notif_atraso_ativo")
+            .eq("id", 1)
+            .single()
+            .execute()
+            .data
+        )
+        return data or _CONFIG_PADRAO
+    except Exception:
+        logger.warning("Não foi possível ler academia_config; usando padrões")
+        return _CONFIG_PADRAO
+
 
 def _email_do_usuario(profile_id: str) -> str | None:
     """Busca o e-mail do usuário via Supabase Auth."""
@@ -19,9 +44,16 @@ def _email_do_usuario(profile_id: str) -> str | None:
 def job_notificar_vencimentos():
     """
     Roda diariamente às 08:00.
-    Envia e-mail para alunos com mensalidade vencendo amanhã.
+    Envia e-mail para alunos com mensalidade vencendo dentro de
+    `notif_dias_antes` dias (configurável). Desativável via config.
     """
-    amanha = (date.today() + timedelta(days=1)).isoformat()
+    config = _config_notificacoes()
+    if not config.get("notif_lembrete_ativo", True):
+        logger.info("Lembrete de vencimento desativado nas configurações; pulando.")
+        return
+
+    dias_antes = config.get("notif_dias_antes", 1)
+    alvo = (date.today() + timedelta(days=dias_antes)).isoformat()
 
     mensalidades = (
         supabase.table("mensalidades")
@@ -29,7 +61,7 @@ def job_notificar_vencimentos():
             "valor, data_vencimento, "
             "aluno_planos(planos(nome), alunos(profile_id, profiles(nome)))"
         )
-        .eq("data_vencimento", amanha)
+        .eq("data_vencimento", alvo)
         .eq("status", "pendente")
         .execute()
         .data
@@ -59,8 +91,12 @@ def job_notificar_vencimentos():
 def job_notificar_atrasadas():
     """
     Roda diariamente às 08:15.
-    Envia e-mail para alunos com mensalidades em atraso.
+    Envia e-mail para alunos com mensalidades em atraso. Desativável via config.
     """
+    if not _config_notificacoes().get("notif_atraso_ativo", True):
+        logger.info("Aviso de atraso desativado nas configurações; pulando.")
+        return
+
     hoje = date.today()
 
     atrasadas = (

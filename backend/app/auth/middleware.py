@@ -30,6 +30,10 @@ def require_auth(f):
         if not profile:
             return jsonify({"error": "Perfil não encontrado"}), 401
 
+        # Usuário desativado perde acesso a tudo, mesmo com token ainda válido.
+        if not profile.get("ativo", True):
+            return jsonify({"error": "Conta desativada. Procure o administrador."}), 403
+
         g.user_id = user.id
         g.user_tipo = profile["tipo"]
         # Guarda o JWT da requisição para handlers que precisam consultar o
@@ -72,10 +76,13 @@ def _validate_token(token):
 
 
 def _get_profile(user_id):
+    # select("*") em vez de colunas nomeadas para tolerar a coluna `ativo`
+    # ainda não migrada: sem ela, `.get("ativo", True)` trata como ativo e o
+    # app não quebra antes de rodar a migration 007.
     def _query():
         result = (
             supabase.table("profiles")
-            .select("tipo")
+            .select("*")
             .eq("id", user_id)
             .single()
             .execute()

@@ -37,6 +37,28 @@ export const login = (email, password) =>
   fetcher('/auth/login', null, { method: 'POST', body: JSON.stringify({ email, password }) })
 export const logout = (token) => fetcher('/auth/logout', token, { method: 'POST' })
 export const getMe = (token) => fetcher('/auth/me', token)
+export const atualizarMe = (token, data) =>
+  fetcher('/auth/me', token, { method: 'PUT', body: JSON.stringify(data) })
+export const trocarSenha = (token, data) =>
+  fetcher('/auth/change-password', token, { method: 'POST', body: JSON.stringify(data) })
+
+// Configurações — usuários
+export const getUsuarios = (token) => fetcher('/configuracoes/usuarios', token)
+export const atualizarTipoUsuario = (token, userId, tipo) =>
+  fetcher(`/configuracoes/usuarios/${userId}/tipo`, token, {
+    method: 'PATCH',
+    body: JSON.stringify({ tipo }),
+  })
+export const atualizarStatusUsuario = (token, userId, ativo) =>
+  fetcher(`/configuracoes/usuarios/${userId}/status`, token, {
+    method: 'PATCH',
+    body: JSON.stringify({ ativo }),
+  })
+
+// Configurações da academia
+export const getConfigAcademia = (token) => fetcher('/configuracoes/academia', token)
+export const atualizarConfigAcademia = (token, data) =>
+  fetcher('/configuracoes/academia', token, { method: 'PUT', body: JSON.stringify(data) })
 
 // Portal do aluno
 export const getPortalMe = (token) => fetcher('/portal/me', token)

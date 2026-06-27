@@ -70,7 +70,8 @@ def test_login_rate_limit():
 
 
 def test_login_sucesso(client):
-    with patch("app.auth.routes.get_anon_client") as mock_factory:
+    with patch("app.auth.routes.get_anon_client") as mock_factory, \
+         patch("app.auth.routes.supabase") as mock_supa:
         session = MagicMock()
         session.session.access_token = "token-fake"
         session.session.refresh_token = "refresh-fake"
@@ -79,6 +80,10 @@ def test_login_sucesso(client):
         mock_client = MagicMock()
         mock_client.auth.sign_in_with_password.return_value = session
         mock_factory.return_value = mock_client
+        # Login agora confere se a conta está ativa antes de liberar o token.
+        mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
+            data={"ativo": True}
+        )
 
         res = client.post(
             "/auth/login",

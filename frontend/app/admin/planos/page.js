@@ -198,7 +198,7 @@ export default function PlanosPage() {
             </div>
             <div>
               <label className="text-xs text-gray-500 mb-1 block">Duração (dias) *</label>
-              <input type="number" min="1" className={input} value={form.duracao_dias}
+              <input type="number" min="1" className={input} placeholder="Ex: 30" value={form.duracao_dias}
                 onChange={e => set('duracao_dias', e.target.value)} required />
             </div>
             {erro && <p className="col-span-2 text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{erro}</p>}

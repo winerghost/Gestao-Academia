@@ -164,7 +164,8 @@ def test_criar_aluno_inexistente(client):
     with patch("app.avaliacoes.routes.supabase") as mock_supa, \
          patch("app.auth.middleware.supabase") as mock_auth:
         _mock_auth(mock_auth)
-        mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(data=None)
+        # maybe_single() retorna data=None quando não encontra (não lança exceção)
+        mock_supa.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(data=None)
 
         res = client.post("/avaliacoes", json={
             "aluno_id": "00000000-0000-0000-0000-000000000099",
@@ -177,7 +178,7 @@ def test_criar_sucesso(client):
     with patch("app.avaliacoes.routes.supabase") as mock_supa, \
          patch("app.auth.middleware.supabase") as mock_auth:
         _mock_auth(mock_auth)
-        mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
+        mock_supa.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
             data={"id": "aluno-uuid"}
         )
         mock_supa.table.return_value.insert.return_value.execute.return_value = MagicMock(
@@ -191,6 +192,58 @@ def test_criar_sucesso(client):
             "altura_cm": 175.0,
         }, headers=_auth_headers())
         assert res.status_code == 201
+
+
+def test_criar_todos_campos_incluindo_instrutor(client):
+    """Preencher todos os campos (inclusive instrutor_id) deve retornar 201."""
+    with patch("app.avaliacoes.routes.supabase") as mock_supa, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth)
+        mock_supa.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
+            data={"id": "aluno-uuid"}
+        )
+        mock_supa.table.return_value.insert.return_value.execute.return_value = MagicMock(
+            data=[FAKE_AVALIACAO]
+        )
+
+        res = client.post("/avaliacoes", json={
+            "aluno_id": "aluno-uuid-000-0000-0000-000000000001",
+            "instrutor_id": "00000000-0000-0000-0000-000000000002",
+            "data_avaliacao": "2026-06-25",
+            "peso_kg": 75.0,
+            "altura_cm": 175.0,
+            "gordura_corporal": 18.5,
+            "massa_magra_kg": 61.1,
+            "circ_cintura": 80.0,
+            "circ_quadril": 95.0,
+            "circ_braco": 35.0,
+            "circ_coxa": 55.0,
+            "circ_peito": 100.0,
+            "pressao_arterial": "120/80",
+            "observacoes": "Boa condição física",
+        }, headers=_auth_headers())
+        assert res.status_code == 201
+
+
+def test_criar_insert_falha_retorna_400(client):
+    """Exceção no insert (ex.: FK inválida) deve retornar 400, não 500."""
+    with patch("app.avaliacoes.routes.supabase") as mock_supa, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth)
+        mock_supa.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
+            data={"id": "aluno-uuid"}
+        )
+        mock_supa.table.return_value.insert.return_value.execute.side_effect = Exception(
+            "violates foreign key constraint"
+        )
+
+        res = client.post("/avaliacoes", json={
+            "aluno_id": "aluno-uuid-000-0000-0000-000000000001",
+            "data_avaliacao": "2026-06-25",
+            "instrutor_id": "uuid-instrutor-invalido",
+        }, headers=_auth_headers())
+        assert res.status_code == 400
+        assert "avaliação" in res.get_json()["error"].lower()
 
 
 def test_criar_data_invalida(client):
@@ -209,7 +262,7 @@ def test_criar_instrutor_aluno_fora_do_escopo_negado(client):
          patch("app.avaliacoes.routes._alunos_do_instrutor", return_value=["outro-aluno"]), \
          patch("app.auth.middleware.supabase") as mock_auth:
         _mock_auth(mock_auth, tipo="instrutor")
-        mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
+        mock_supa.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
             data={"id": "aluno-x"}
         )
         res = client.post("/avaliacoes", json={
@@ -225,7 +278,7 @@ def test_criar_instrutor_forca_autoria(client):
          patch("app.avaliacoes.routes._alunos_do_instrutor", return_value=["aluno-x"]), \
          patch("app.auth.middleware.supabase") as mock_auth:
         _mock_auth(mock_auth, tipo="instrutor")
-        mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
+        mock_supa.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
             data={"id": "aluno-x"}
         )
         captured = {}

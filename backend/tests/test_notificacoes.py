@@ -61,8 +61,16 @@ def test_template_atrasada_contem_juros():
 
 # ── Jobs ──────────────────────────────────────────────────────────────────────
 
+_CONFIG_ATIVA = {
+    "notif_lembrete_ativo": True,
+    "notif_dias_antes": 1,
+    "notif_atraso_ativo": True,
+}
+
+
 def test_job_notificar_vencimentos_sem_mensalidades():
-    with patch("app.notificacoes.jobs.supabase") as mock_supa:
+    with patch("app.notificacoes.jobs.supabase") as mock_supa, \
+         patch("app.notificacoes.jobs._config_notificacoes", return_value=_CONFIG_ATIVA):
         mock_supa.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
         job_notificar_vencimentos()  # Não deve lançar exceção
 
@@ -70,6 +78,7 @@ def test_job_notificar_vencimentos_sem_mensalidades():
 def test_job_notificar_atrasadas_envia_email():
     with patch("app.notificacoes.jobs.supabase") as mock_supa, \
          patch("app.notificacoes.jobs.enviar_email") as mock_email, \
+         patch("app.notificacoes.jobs._config_notificacoes", return_value=_CONFIG_ATIVA), \
          patch("app.notificacoes.jobs._email_do_usuario", return_value="aluno@test.com"):
 
         mock_supa.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(
@@ -95,6 +104,7 @@ def test_job_notificar_atrasadas_envia_email():
 
 def test_job_sem_profile_id_nao_envia():
     with patch("app.notificacoes.jobs.supabase") as mock_supa, \
+         patch("app.notificacoes.jobs._config_notificacoes", return_value=_CONFIG_ATIVA), \
          patch("app.notificacoes.jobs.enviar_email") as mock_email:
 
         mock_supa.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(

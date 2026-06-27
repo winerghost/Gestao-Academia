@@ -150,6 +150,116 @@ def test_buscar_aluno_rls_nega_retorna_404(client):
         assert res.status_code == 404
 
 
+# ── Telefone no cadastro ──────────────────────────────────────────────────────
+
+def test_criar_aluno_com_telefone_atualiza_profile(client):
+    """Quando telefone é enviado, deve atualizar profiles após criar o usuário."""
+    with patch("app.alunos.routes.supabase") as mock_supa, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth)
+
+        user = MagicMock()
+        user.id = "novo-uuid"
+        mock_supa.auth.admin.create_user.return_value = MagicMock(user=user)
+
+        update_chain = MagicMock()
+        update_chain.eq.return_value.execute.return_value = MagicMock(data=[{}])
+
+        insert_chain = MagicMock()
+        insert_chain.execute.return_value = MagicMock(
+            data=[{"id": "novo-uuid", "cpf": "12345678901", "status": "ativo"}]
+        )
+
+        def table_router(name):
+            m = MagicMock()
+            if name == "profiles":
+                m.update.return_value = update_chain
+            else:
+                m.insert.return_value = insert_chain
+            return m
+
+        mock_supa.table.side_effect = table_router
+
+        res = client.post("/alunos", json={
+            "nome": "João Silva",
+            "email": "joao@academia.com",
+            "senha": "Senha@123",
+            "cpf": "123.456.789-01",
+            "telefone": "(11) 99999-9999",
+        }, headers=_auth_headers())
+
+        assert res.status_code == 201
+        # garante que profiles.update foi chamado com o telefone
+        update_chain.eq.assert_called_once_with("id", "novo-uuid")
+
+
+def test_criar_aluno_sem_telefone_nao_chama_profiles_update(client):
+    """Sem telefone no payload, profiles.update não deve ser chamado."""
+    with patch("app.alunos.routes.supabase") as mock_supa, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth)
+
+        user = MagicMock()
+        user.id = "novo-uuid"
+        mock_supa.auth.admin.create_user.return_value = MagicMock(user=user)
+        mock_supa.table.return_value.insert.return_value.execute.return_value = MagicMock(
+            data=[{"id": "novo-uuid", "cpf": "12345678901", "status": "ativo"}]
+        )
+
+        res = client.post("/alunos", json={
+            "nome": "João Silva",
+            "email": "joao@academia.com",
+            "senha": "Senha@123",
+            "cpf": "123.456.789-01",
+        }, headers=_auth_headers())
+
+        assert res.status_code == 201
+        # profiles.update jamais deve ter sido chamado
+        for call_args in mock_supa.table.call_args_list:
+            assert call_args[0][0] != "profiles"
+
+
+def test_atualizar_aluno_telefone_vai_para_profiles(client):
+    """PUT /alunos/<id> com telefone deve atualizar profiles, não alunos."""
+    with patch("app.alunos.routes.supabase") as mock_supa, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth)
+
+        profile_update = MagicMock()
+        profile_update.eq.return_value.execute.return_value = MagicMock(data=[{}])
+
+        aluno_select = MagicMock()
+        aluno_select.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
+            data={"profile_id": "profile-uuid"}
+        )
+
+        aluno_update = MagicMock()
+        aluno_update.eq.return_value.execute.return_value = MagicMock(
+            data=[{"id": "aluno-uuid", "cpf": "12345678901"}]
+        )
+
+        def table_router(name):
+            m = MagicMock()
+            if name == "profiles":
+                m.update.return_value = profile_update
+            else:
+                m.select.return_value = aluno_select
+                m.update.return_value = aluno_update
+            return m
+
+        mock_supa.table.side_effect = table_router
+
+        res = client.put(
+            "/alunos/00000000-0000-0000-0000-000000000001",
+            json={"telefone": "(11) 88888-8888", "endereco": "Rua Nova, 10"},
+            headers=_auth_headers(),
+        )
+
+        assert res.status_code == 200
+        # profiles.update chamado com telefone
+        profile_update.eq.assert_called_once_with("id", "profile-uuid")
+
+
 # ── Status ────────────────────────────────────────────────────────────────────
 
 def test_status_invalido(client):

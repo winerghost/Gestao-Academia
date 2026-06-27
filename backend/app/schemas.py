@@ -57,6 +57,25 @@ class LoginSchema(StrictModel):
     password: Annotated[str, Field(min_length=1, max_length=128)]
 
 
+class PreferenciasSchema(StrictModel):
+    """Preferências visuais do usuário."""
+    cor_destaque: Annotated[OptStr, Field(pattern=r"^#[0-9a-fA-F]{6}$")] = None
+    tamanho_fonte: Optional[Literal["pequena", "normal", "grande"]] = None
+
+
+class ProfileUpdateSchema(StrictModel):
+    """Atualização do próprio perfil (Conta / Aparência)."""
+    nome: Annotated[Optional[str], Field(min_length=1, max_length=120)] = None
+    telefone: Annotated[OptStr, Field(max_length=20)] = None
+    # Preferências de aparência (chaves controladas pelo PreferenciasSchema).
+    preferencias: Optional[PreferenciasSchema] = None
+
+
+class ChangePasswordSchema(StrictModel):
+    senha_atual: Annotated[str, Field(min_length=1, max_length=128)]
+    senha_nova: Senha
+
+
 # ── Alunos ───────────────────────────────────────────────────────────────────
 
 class AlunoCreateSchema(StrictModel):
@@ -64,6 +83,7 @@ class AlunoCreateSchema(StrictModel):
     email: Email
     senha: Senha
     cpf: str
+    telefone: Annotated[OptStr, Field(max_length=20)] = None
     data_nascimento: OptDate = None
     endereco: Annotated[OptStr, Field(max_length=300)] = None
     status: Literal["ativo", "inativo"] = "ativo"
@@ -77,6 +97,7 @@ class AlunoCreateSchema(StrictModel):
 
 class AlunoUpdateSchema(StrictModel):
     cpf: Optional[str] = None
+    telefone: Annotated[OptStr, Field(max_length=20)] = None
     data_nascimento: OptDate = None
     endereco: Annotated[OptStr, Field(max_length=300)] = None
     frequencia_habilitada: Optional[bool] = None
@@ -136,3 +157,38 @@ class VincularPlanoAlunoSchema(StrictModel):
 
 class VincularPlanoInstrutorSchema(StrictModel):
     plano_id: UUID
+
+
+# ── Configurações da academia ────────────────────────────────────────────────
+
+_HORA_RE = r"^([01]\d|2[0-3]):[0-5]\d$"  # HH:MM 24h
+
+
+class HorarioDiaSchema(StrictModel):
+    abre: Annotated[OptStr, Field(pattern=_HORA_RE)] = None
+    fecha: Annotated[OptStr, Field(pattern=_HORA_RE)] = None
+    fechado: bool = False
+
+
+class UserTipoSchema(StrictModel):
+    tipo: Literal["admin", "recepcionista", "instrutor", "aluno"]
+
+
+class UserStatusSchema(StrictModel):
+    ativo: bool
+
+
+# ── Configurações da academia ────────────────────────────────────────────────
+
+class AcademiaConfigSchema(StrictModel):
+    """Atualização da configuração da academia (todos os campos opcionais)."""
+    nome: Annotated[OptStr, Field(max_length=120)] = None
+    cnpj: Annotated[OptStr, Field(max_length=18)] = None
+    telefone: Annotated[OptStr, Field(max_length=20)] = None
+    email: Annotated[OptStr, Field(max_length=254, pattern=_EMAIL_RE)] = None
+    endereco: Annotated[OptStr, Field(max_length=300)] = None
+    # Horários por dia: { "seg": {abre, fecha, fechado}, ... }
+    horarios: Optional[dict[Literal["seg", "ter", "qua", "qui", "sex", "sab", "dom"], HorarioDiaSchema]] = None
+    notif_lembrete_ativo: Optional[bool] = None
+    notif_dias_antes: Annotated[Optional[int], Field(ge=0, le=30)] = None
+    notif_atraso_ativo: Optional[bool] = None

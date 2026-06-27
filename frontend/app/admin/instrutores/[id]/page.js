@@ -128,7 +128,7 @@ export default function InstrutorDetalhe() {
               ))}
               <div>
                 <label className="text-xs text-gray-500">Salário (R$)</label>
-                <input type="number" step="0.01" min="0" className={input} value={form.salario}
+                <input type="number" step="0.01" min="0" className={input} placeholder="Ex: 2500.00" value={form.salario}
                   onChange={e => setForm(f => ({ ...f, salario: e.target.value }))} />
               </div>
               <div>

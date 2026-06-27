@@ -4,15 +4,17 @@ import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '../../lib/supabase'
 import { getMe, logout as apiLogout } from '../../lib/api'
+import { aplicarTema, lerTemaLocal } from '../../lib/tema'
 
 const NAV = [
-  { href: '/admin',               label: 'Dashboard',    icon: '⊞',  exact: true },
-  { href: '/admin/alunos',        label: 'Alunos',       icon: '👥' },
-  { href: '/admin/mensalidades',  label: 'Mensalidades', icon: '💳' },
-  { href: '/admin/avaliacoes',    label: 'Avaliações',   icon: '📊' },
-  { href: '/admin/instrutores',   label: 'Instrutores',  icon: '🏋️' },
-  { href: '/admin/planos',        label: 'Planos',       icon: '📋' },
-  { href: '/admin/relatorios',    label: 'Relatórios',   icon: '📄' },
+  { href: '/admin',               label: 'Dashboard',     icon: '⊞',  exact: true },
+  { href: '/admin/alunos',        label: 'Alunos',        icon: '👥' },
+  { href: '/admin/mensalidades',  label: 'Mensalidades',  icon: '💳' },
+  { href: '/admin/avaliacoes',    label: 'Avaliações',    icon: '📊' },
+  { href: '/admin/instrutores',   label: 'Instrutores',   icon: '🏋️' },
+  { href: '/admin/planos',        label: 'Planos',        icon: '📋' },
+  { href: '/admin/relatorios',    label: 'Relatórios',    icon: '📄' },
+  { href: '/admin/configuracoes', label: 'Configurações', icon: '⚙️' },
 ]
 
 const TIPO_LABEL = { admin: 'Administrador', recepcionista: 'Recepcionista', instrutor: 'Instrutor' }
@@ -40,6 +42,9 @@ export default function AdminLayout({ children }) {
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
 
+  // Aplica o tema em cache no primeiro paint (evita "flash" de cor padrão).
+  useEffect(() => { aplicarTema(lerTemaLocal()) }, [])
+
   useEffect(() => {
     async function checkAuth() {
       const { data: { session } } = await supabase.auth.getSession()
@@ -48,6 +53,8 @@ export default function AdminLayout({ children }) {
         const profile = await getMe(session.access_token)
         if (profile.tipo === 'aluno') { router.replace('/'); return }
         setPerfil(profile)
+        // Reaplica com as preferências salvas no servidor (fonte da verdade).
+        if (profile.preferencias) aplicarTema(profile.preferencias)
       } catch {
         router.replace('/login')
       }

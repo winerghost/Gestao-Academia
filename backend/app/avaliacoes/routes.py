@@ -1,7 +1,7 @@
 import io
 from datetime import date
 from xml.sax.saxutils import escape as xml_escape
-from flask import Blueprint, request, jsonify, send_file, g
+from flask import Blueprint, request, jsonify, send_file, g, current_app
 from ..supabase_client import supabase
 from ..auth.middleware import require_auth, require_role
 
@@ -10,9 +10,17 @@ avaliacoes_bp = Blueprint("avaliacoes", __name__, url_prefix="/avaliacoes")
 # Teto de itens na listagem — evita devolver a tabela inteira de uma vez
 _LIMITE_LISTAGEM = 200
 
+# Diâmetros ósseos (modelo "Mapeamento Corporal"), em cm.
+_CAMPOS_DIAMETROS = {
+    "diam_biacromial", "diam_torax_transverso", "diam_torax_ap",
+    "diam_biepicondilo_umeral", "diam_biestiloide", "diam_crista_iliaca",
+    "diam_bitrocanterica", "diam_biepicondilo_femural", "diam_bimaleolar",
+}
+
 _CAMPOS_NUMERICOS = {
     "peso_kg", "altura_cm", "gordura_corporal", "massa_magra_kg",
     "circ_cintura", "circ_quadril", "circ_braco", "circ_coxa", "circ_peito",
+    *_CAMPOS_DIAMETROS,
 }
 
 _CAMPOS_PERMITIDOS = {
@@ -20,6 +28,7 @@ _CAMPOS_PERMITIDOS = {
     "peso_kg", "altura_cm", "gordura_corporal", "massa_magra_kg",
     "circ_cintura", "circ_quadril", "circ_braco", "circ_coxa", "circ_peito",
     "pressao_arterial", "observacoes",
+    *_CAMPOS_DIAMETROS,
 }
 
 
@@ -64,10 +73,10 @@ def _alunos_do_instrutor(profile_id: str) -> list:
         supabase.table("instrutores")
         .select("id")
         .eq("profile_id", profile_id)
-        .single()
+        .maybe_single()
         .execute()
     )
-    if not inst.data:
+    if not inst or not inst.data:
         return []
 
     planos = (
@@ -147,10 +156,10 @@ def criar():
         supabase.table("alunos")
         .select("id")
         .eq("id", data["aluno_id"])
-        .single()
+        .maybe_single()
         .execute()
     )
-    if not aluno.data:
+    if not aluno or not aluno.data:
         return jsonify({"error": "Aluno não encontrado"}), 404
 
     # Instrutor só cria avaliação para alunos dos seus planos
@@ -171,8 +180,12 @@ def criar():
     if imc:
         payload["imc"] = imc
 
-    result = supabase.table("avaliacoes").insert(payload).execute()
-    return jsonify(result.data[0]), 201
+    try:
+        result = supabase.table("avaliacoes").insert(payload).execute()
+        return jsonify(result.data[0]), 201
+    except Exception as e:
+        current_app.logger.exception("Falha ao salvar avaliação")
+        return jsonify({"error": "Não foi possível salvar a avaliação", "detalhe": str(e)}), 400
 
 
 @avaliacoes_bp.get("/<uuid:avaliacao_id>")
@@ -320,6 +333,15 @@ def exportar_pdf(avaliacao_id):
         ["Circ. Braço",        fmt(av.get("circ_braco"), " cm")],
         ["Circ. Coxa",         fmt(av.get("circ_coxa"), " cm")],
         ["Circ. Peito",        fmt(av.get("circ_peito"), " cm")],
+        ["Diâm. Biacromial",          fmt(av.get("diam_biacromial"), " cm")],
+        ["Diâm. Tórax Transverso",    fmt(av.get("diam_torax_transverso"), " cm")],
+        ["Diâm. Tórax Ântero-Post.",  fmt(av.get("diam_torax_ap"), " cm")],
+        ["Diâm. Biepicôndilo Umeral", fmt(av.get("diam_biepicondilo_umeral"), " cm")],
+        ["Diâm. Biestilóide",         fmt(av.get("diam_biestiloide"), " cm")],
+        ["Diâm. Crista Ilíaca",       fmt(av.get("diam_crista_iliaca"), " cm")],
+        ["Diâm. Bitrocantérica",      fmt(av.get("diam_bitrocanterica"), " cm")],
+        ["Diâm. Biepicôndilo Femural", fmt(av.get("diam_biepicondilo_femural"), " cm")],
+        ["Diâm. Bimaleolar",          fmt(av.get("diam_bimaleolar"), " cm")],
         ["Pressão Arterial",   fmt(av.get("pressao_arterial"))],
         ["Observações",        av.get("observacoes") or "—"],
     ]
