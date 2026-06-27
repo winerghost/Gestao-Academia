@@ -42,8 +42,32 @@ export const atualizarMe = (token, data) =>
 export const trocarSenha = (token, data) =>
   fetcher('/auth/change-password', token, { method: 'POST', body: JSON.stringify(data) })
 
+// Avatar (foto de perfil) — upload é multipart, então não usa o fetcher JSON.
+export async function uploadAvatar(token, file) {
+  const form = new FormData()
+  form.append('file', file)
+  // Não definimos Content-Type: o navegador injeta o boundary do multipart.
+  const res = await fetch(`${API_URL}/auth/me/avatar`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error || `Erro ${res.status}`)
+  }
+  return res.json()
+}
+export const removerAvatar = (token) =>
+  fetcher('/auth/me/avatar', token, { method: 'DELETE' })
+export const usarGravatar = (token) =>
+  fetcher('/auth/me/avatar/gravatar', token, { method: 'POST' })
+
 // Configurações — usuários
-export const getUsuarios = (token) => fetcher('/configuracoes/usuarios', token)
+export const getUsuarios = (token, params = {}) => {
+  const qs = new URLSearchParams(params).toString()
+  return fetcher(`/configuracoes/usuarios${qs ? `?${qs}` : ''}`, token)
+}
 export const atualizarTipoUsuario = (token, userId, tipo) =>
   fetcher(`/configuracoes/usuarios/${userId}/tipo`, token, {
     method: 'PATCH',
@@ -54,6 +78,24 @@ export const atualizarStatusUsuario = (token, userId, ativo) =>
     method: 'PATCH',
     body: JSON.stringify({ ativo }),
   })
+
+// Foto de qualquer usuário (admin/recepcionista) — multipart no upload.
+export async function adminUploadAvatarUsuario(token, userId, file) {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch(`${API_URL}/configuracoes/usuarios/${userId}/avatar`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error || `Erro ${res.status}`)
+  }
+  return res.json()
+}
+export const adminRemoverAvatarUsuario = (token, userId) =>
+  fetcher(`/configuracoes/usuarios/${userId}/avatar`, token, { method: 'DELETE' })
 
 // Configurações da academia
 export const getConfigAcademia = (token) => fetcher('/configuracoes/academia', token)

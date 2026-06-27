@@ -53,8 +53,8 @@ function NovaAvaliacaoForm() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.replace('/login'); return }
       setToken(session.access_token)
-      const [a, i] = await Promise.all([getAlunos(session.access_token), getInstrutores(session.access_token)])
-      setAlunos(a)
+      const [resp, i] = await Promise.all([getAlunos(session.access_token, { limit: 200 }), getInstrutores(session.access_token)])
+      setAlunos(resp.data ?? [])
       setInstrutores(i)
       setLoading(false)
     }

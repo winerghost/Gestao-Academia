@@ -59,8 +59,10 @@ class LoginSchema(StrictModel):
 
 class PreferenciasSchema(StrictModel):
     """Preferências visuais do usuário."""
-    cor_destaque: Annotated[OptStr, Field(pattern=r"^#[0-9a-fA-F]{6}$")] = None
-    tamanho_fonte: Optional[Literal["pequena", "normal", "grande"]] = None
+    cor_destaque:    Annotated[OptStr, Field(pattern=r"^#[0-9a-fA-F]{6}$")] = None
+    tamanho_fonte:   Optional[Literal["pequena", "normal", "grande"]] = None
+    modo:            Optional[Literal["claro", "escuro", "sistema"]] = None
+    sidebar_compacta: Optional[bool] = None
 
 
 class ProfileUpdateSchema(StrictModel):
@@ -78,6 +80,13 @@ class ChangePasswordSchema(StrictModel):
 
 # ── Alunos ───────────────────────────────────────────────────────────────────
 
+# Foto enviada como data URL base64 (webcam ou arquivo). O conteúdo real é
+# revalidado e re-encodado no backend (Pillow); aqui só barramos formato/tamanho
+# óbvios antes de decodificar.
+_FOTO_DATAURL_RE = re.compile(r"^data:image/(?:jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=\s]+$")
+_FOTO_MAX_LEN = 8_000_000  # ~6 MB já decodificado; webcam gera muito menos
+
+
 class AlunoCreateSchema(StrictModel):
     nome: Nome
     email: Email
@@ -88,11 +97,24 @@ class AlunoCreateSchema(StrictModel):
     endereco: Annotated[OptStr, Field(max_length=300)] = None
     status: Literal["ativo", "inativo"] = "ativo"
     frequencia_habilitada: bool = False
+    # Foto opcional (data URL). Decodificada e sanitizada no backend.
+    foto: OptStr = None
 
     @field_validator("cpf")
     @classmethod
     def _cpf(cls, v: str) -> str:
         return _limpar_cpf(v)
+
+    @field_validator("foto")
+    @classmethod
+    def _foto(cls, v):
+        if v is None:
+            return None
+        if len(v) > _FOTO_MAX_LEN:
+            raise ValueError("Foto muito grande")
+        if not _FOTO_DATAURL_RE.match(v):
+            raise ValueError("Foto deve ser uma imagem (data URL base64) JPG, PNG ou WEBP")
+        return v
 
 
 class AlunoUpdateSchema(StrictModel):

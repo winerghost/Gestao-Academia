@@ -15,7 +15,7 @@ def listar():
 
     query = (
         supabase.table("mensalidades")
-        .select("*, aluno_planos(aluno_id, planos(nome), alunos(profiles(nome)))")
+        .select("*, aluno_planos!inner(aluno_id, planos(nome), alunos(profiles(nome)))")
     )
 
     if status:

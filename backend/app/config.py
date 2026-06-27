@@ -42,6 +42,16 @@ class Config:
     RATELIMIT_DEFAULT = os.getenv("RATELIMIT_DEFAULT", "200 per minute")
     RATELIMIT_LOGIN = os.getenv("RATELIMIT_LOGIN", "10 per minute;50 per hour")
 
+    # ── Avatares (foto de perfil) ───────────────────────────────────────────
+    # Bucket público do Supabase Storage onde ficam as fotos enviadas.
+    AVATAR_BUCKET = os.getenv("AVATAR_BUCKET", "avatars")
+    # Tamanho máximo do arquivo enviado (antes do re-encode). 4 MB cobre fotos
+    # de celular com folga; acima disso recusamos para não engolir uploads
+    # gigantes. O MAX_CONTENT_LENGTH (em __init__) barra ainda antes de ler.
+    AVATAR_MAX_BYTES = int(os.getenv("AVATAR_MAX_BYTES", str(4 * 1024 * 1024)))
+    # Lado máximo (px) da imagem após o processamento — quadrada.
+    AVATAR_SIZE_PX = int(os.getenv("AVATAR_SIZE_PX", "512"))
+
     # ── E-mail ──────────────────────────────────────────────────────────────
     EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
     EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))

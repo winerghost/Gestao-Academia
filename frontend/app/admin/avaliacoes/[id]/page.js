@@ -4,6 +4,7 @@ import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '../../../../lib/supabase'
 import { getAvaliacao, getAvaliacoes, atualizarAvaliacao, deletarAvaliacao, downloadRelatorio } from '../../../../lib/api'
+import { AvaliacaoDetalheSkeleton } from './_skeleton'
 
 // ── Gráfico SVG nativo ────────────────────────────────────────────────────────
 function LineChart({ pontos, cor = '#3c8dbc', label = '', height = 160 }) {
@@ -355,7 +356,7 @@ export default function AvaliacaoDetalhe() {
     downloadRelatorio(token, `/avaliacoes/${id}/pdf`)
   }
 
-  if (loading) return <p className="text-gray-400 py-8">Carregando...</p>
+  if (loading) return <AvaliacaoDetalheSkeleton />
   if (!av)     return <p className="text-red-500">Avaliação não encontrada.</p>
 
   const nomeAluno = av.alunos?.profiles?.nome || '—'

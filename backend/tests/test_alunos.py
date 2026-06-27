@@ -1,5 +1,10 @@
+import base64
+import io
 from unittest.mock import patch, MagicMock
+
 import pytest
+from PIL import Image
+
 from app import create_app
 
 
@@ -9,6 +14,12 @@ def client():
     app.config["TESTING"] = True
     with app.test_client() as c:
         yield c
+
+
+def _png_dataurl():
+    buf = io.BytesIO()
+    Image.new("RGB", (24, 24), (10, 200, 50)).save(buf, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
 def _auth_headers():
@@ -36,15 +47,21 @@ def test_listar_alunos_como_admin(client):
          patch("app.auth.middleware.supabase") as mock_auth:
         _mock_auth(mock_auth)
 
+        execute_result = MagicMock(
+            data=[{"id": "uuid-1", "cpf": "12345678901", "status": "ativo"}],
+            count=1,
+        )
         chain = MagicMock()
-        chain.order.return_value.execute.return_value = MagicMock(data=[
-            {"id": "uuid-1", "cpf": "12345678901", "status": "ativo"}
-        ])
+        chain.order.return_value.range.return_value.execute.return_value = execute_result
         mock_supa.table.return_value.select.return_value.order = chain.order
 
         res = client.get("/alunos", headers=_auth_headers())
         assert res.status_code == 200
-        assert isinstance(res.get_json(), list)
+        body = res.get_json()
+        assert "data" in body
+        assert "total" in body
+        assert body["total"] == 1
+        assert isinstance(body["data"], list)
 
 
 # ── Criar aluno ───────────────────────────────────────────────────────────────
@@ -155,6 +172,7 @@ def test_buscar_aluno_rls_nega_retorna_404(client):
 def test_criar_aluno_com_telefone_atualiza_profile(client):
     """Quando telefone é enviado, deve atualizar profiles após criar o usuário."""
     with patch("app.alunos.routes.supabase") as mock_supa, \
+         patch("app.alunos.routes.gravatar_existe", return_value=False), \
          patch("app.auth.middleware.supabase") as mock_auth:
         _mock_auth(mock_auth)
 
@@ -196,6 +214,7 @@ def test_criar_aluno_com_telefone_atualiza_profile(client):
 def test_criar_aluno_sem_telefone_nao_chama_profiles_update(client):
     """Sem telefone no payload, profiles.update não deve ser chamado."""
     with patch("app.alunos.routes.supabase") as mock_supa, \
+         patch("app.alunos.routes.gravatar_existe", return_value=False), \
          patch("app.auth.middleware.supabase") as mock_auth:
         _mock_auth(mock_auth)
 
@@ -258,6 +277,101 @@ def test_atualizar_aluno_telefone_vai_para_profiles(client):
         assert res.status_code == 200
         # profiles.update chamado com telefone
         profile_update.eq.assert_called_once_with("id", "profile-uuid")
+
+
+# ── Foto no cadastro (webcam/arquivo) + Gravatar ──────────────────────────────
+
+def _mock_create_user(mock_supa, uid="novo-uuid"):
+    user = MagicMock()
+    user.id = uid
+    mock_supa.auth.admin.create_user.return_value = MagicMock(user=user)
+
+
+def test_criar_aluno_gravatar_prevalece_sobre_foto(client):
+    """Se o e-mail tem Gravatar, ele prevalece e a foto da webcam não sobe."""
+    with patch("app.alunos.routes.supabase") as mock_supa, \
+         patch("app.alunos.routes.gravatar_existe", return_value=True), \
+         patch("app.alunos.routes.url_gravatar", return_value="https://gravatar.com/avatar/abc"), \
+         patch("app.alunos.routes.upload_avatar") as mock_upload, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth)
+        _mock_create_user(mock_supa)
+
+        profiles_tbl = MagicMock()
+        profiles_tbl.update.return_value.eq.return_value.execute.return_value = MagicMock(data=[{}])
+        alunos_tbl = MagicMock()
+        alunos_tbl.insert.return_value.execute.return_value = MagicMock(
+            data=[{"id": "novo-uuid", "cpf": "12345678901", "status": "ativo"}]
+        )
+        mock_supa.table.side_effect = lambda n: profiles_tbl if n == "profiles" else alunos_tbl
+
+        res = client.post("/alunos", json={
+            "nome": "João", "email": "j@j.com", "senha": "Senha@123",
+            "cpf": "123.456.789-01", "foto": _png_dataurl(),
+        }, headers=_auth_headers())
+
+        assert res.status_code == 201
+        mock_upload.assert_not_called()  # gravatar prevaleceu
+        profiles_tbl.update.assert_called_once_with(
+            {"avatar_url": "https://gravatar.com/avatar/abc"}
+        )
+
+
+def test_criar_aluno_sem_gravatar_sobe_foto_webcam(client):
+    """Sem Gravatar, a foto enviada é processada e sobe ao Storage."""
+    with patch("app.alunos.routes.supabase") as mock_supa, \
+         patch("app.alunos.routes.gravatar_existe", return_value=False), \
+         patch("app.alunos.routes.upload_avatar", return_value="https://cdn.fake/u/abc.jpg") as mock_upload, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth)
+        _mock_create_user(mock_supa)
+
+        profiles_tbl = MagicMock()
+        profiles_tbl.update.return_value.eq.return_value.execute.return_value = MagicMock(data=[{}])
+        alunos_tbl = MagicMock()
+        alunos_tbl.insert.return_value.execute.return_value = MagicMock(
+            data=[{"id": "novo-uuid", "cpf": "12345678901", "status": "ativo"}]
+        )
+        mock_supa.table.side_effect = lambda n: profiles_tbl if n == "profiles" else alunos_tbl
+
+        res = client.post("/alunos", json={
+            "nome": "João", "email": "j@j.com", "senha": "Senha@123",
+            "cpf": "123.456.789-01", "foto": _png_dataurl(),
+        }, headers=_auth_headers())
+
+        assert res.status_code == 201
+        mock_upload.assert_called_once()
+        profiles_tbl.update.assert_called_once_with(
+            {"avatar_url": "https://cdn.fake/u/abc.jpg"}
+        )
+
+
+def test_criar_aluno_foto_formato_invalido_422(client):
+    """data URL que não é imagem é barrado pelo schema (não cria usuário)."""
+    with patch("app.alunos.routes.supabase") as mock_supa, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth)
+        res = client.post("/alunos", json={
+            "nome": "João", "email": "j@j.com", "senha": "Senha@123",
+            "cpf": "123.456.789-01", "foto": "data:text/plain;base64,QUJD",
+        }, headers=_auth_headers())
+        assert res.status_code == 422
+        assert "foto" in res.get_json()["fields"]
+        mock_supa.auth.admin.create_user.assert_not_called()
+
+
+def test_criar_aluno_foto_corrompida_400(client):
+    """data URL de imagem com base64 que não decodifica para imagem → 400,
+    antes de criar o usuário (sem deixar usuário órfão)."""
+    with patch("app.alunos.routes.supabase") as mock_supa, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth)
+        res = client.post("/alunos", json={
+            "nome": "João", "email": "j@j.com", "senha": "Senha@123",
+            "cpf": "123.456.789-01", "foto": "data:image/png;base64,QUJD",
+        }, headers=_auth_headers())
+        assert res.status_code == 400
+        mock_supa.auth.admin.create_user.assert_not_called()
 
 
 # ── Status ────────────────────────────────────────────────────────────────────

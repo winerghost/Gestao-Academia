@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, g
+from flask import Blueprint, jsonify, g, request, current_app
 from gotrue.errors import AuthApiError
 from ..supabase_client import supabase, get_anon_client
 from ..extensions import limiter
@@ -6,6 +6,14 @@ from ..config import Config
 from ..schemas import LoginSchema, ProfileUpdateSchema, ChangePasswordSchema
 from ..validation import validate_body
 from .middleware import require_auth, _get_token
+from .avatar import (
+    AvatarError,
+    processar_imagem,
+    upload_avatar,
+    remover_avatares_storage,
+    url_gravatar,
+    gravatar_existe,
+)
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 
@@ -66,7 +74,7 @@ def me():
     """Retorna o perfil do usuário logado."""
     result = (
         supabase.table("profiles")
-        .select("id, nome, tipo, telefone, preferencias, created_at")
+        .select("id, nome, tipo, telefone, preferencias, avatar_url, created_at")
         .eq("id", g.user_id)
         .single()
         .execute()
@@ -132,3 +140,74 @@ def trocar_senha(payload: ChangePasswordSchema):
         return jsonify({"error": "Não foi possível alterar a senha"}), 400
 
     return jsonify({"message": "Senha alterada com sucesso"})
+
+
+# ── Foto de perfil (avatar) ──────────────────────────────────────────────────
+
+@auth_bp.post("/me/avatar")
+@require_auth
+def enviar_avatar():
+    """Recebe a foto (multipart, campo 'file'), re-encoda e sobe ao Storage.
+
+    A imagem é sempre reprocessada com Pillow antes de salvar (descarta EXIF e
+    payloads embutidos). Guarda a URL pública resultante em profiles.avatar_url.
+    """
+    arquivo = request.files.get("file")
+    if arquivo is None or not arquivo.filename:
+        return jsonify({"error": "Nenhum arquivo enviado (campo 'file')."}), 400
+
+    try:
+        jpeg = processar_imagem(arquivo.read())
+    except AvatarError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    try:
+        url = upload_avatar(supabase, str(g.user_id), jpeg)
+    except Exception:  # noqa: BLE001 — falha de rede/Storage vira 502 amigável
+        current_app.logger.exception("Falha ao enviar avatar para o Storage")
+        return jsonify({"error": "Não foi possível enviar a foto. Tente novamente."}), 502
+
+    supabase.table("profiles").update({"avatar_url": url}).eq("id", g.user_id).execute()
+    return jsonify({"avatar_url": url})
+
+
+@auth_bp.delete("/me/avatar")
+@require_auth
+def remover_avatar():
+    """Remove a foto: apaga do Storage e zera avatar_url (volta às iniciais)."""
+    try:
+        remover_avatares_storage(supabase, str(g.user_id))
+    except Exception:  # noqa: BLE001 — mesmo se o Storage falhar, limpamos a referência
+        current_app.logger.exception("Falha ao remover avatar do Storage")
+
+    supabase.table("profiles").update({"avatar_url": None}).eq("id", g.user_id).execute()
+    return jsonify({"avatar_url": None})
+
+
+@auth_bp.post("/me/avatar/gravatar")
+@require_auth
+def usar_gravatar():
+    """Usa o Gravatar do e-mail do próprio usuário como foto de perfil.
+
+    O e-mail vem do Supabase Auth (backend), não do cliente — assim ninguém
+    aponta o avatar para o Gravatar de outra pessoa. Só grava se o Gravatar
+    realmente existir para aquele e-mail.
+    """
+    try:
+        user = supabase.auth.admin.get_user_by_id(g.user_id).user
+    except AuthApiError:
+        return jsonify({"error": "Usuário não encontrado"}), 404
+
+    email = user.email if user else None
+    if not email or not gravatar_existe(email):
+        return jsonify({"error": "Não encontramos um Gravatar para o seu e-mail."}), 404
+
+    url = url_gravatar(email)
+    # Passou a usar o Gravatar → descarta qualquer foto enviada que estava no Storage.
+    try:
+        remover_avatares_storage(supabase, str(g.user_id))
+    except Exception:  # noqa: BLE001
+        current_app.logger.exception("Falha ao limpar Storage ao ativar Gravatar")
+
+    supabase.table("profiles").update({"avatar_url": url}).eq("id", g.user_id).execute()
+    return jsonify({"avatar_url": url})

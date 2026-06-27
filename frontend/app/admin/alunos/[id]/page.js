@@ -3,7 +3,9 @@ import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '../../../../lib/supabase'
-import { getAluno, atualizarAluno, vincularPlanoAluno, getMensalidades, getPlanos, pagarMensalidade, getAvaliacoes } from '../../../../lib/api'
+import { getAluno, atualizarAluno, vincularPlanoAluno, getMensalidades, getPlanos, pagarMensalidade, getAvaliacoes, adminUploadAvatarUsuario, adminRemoverAvatarUsuario } from '../../../../lib/api'
+import { AlunoDetalheSkeleton } from './_skeleton'
+import CapturaFoto from '../_CapturaFoto'
 
 const BADGE = {
   ativo: 'bg-green-100 text-green-700',
@@ -37,6 +39,8 @@ export default function AlunoDetalhe() {
   const [novoPlano, setNovoPlano] = useState({ plano_id: '', data_inicio: '' })
   const [erro, setErro] = useState('')
   const [salvando, setSalvando] = useState(false)
+  const [fotoMsg, setFotoMsg] = useState('')
+  const [fotoBusy, setFotoBusy] = useState(false)
 
   async function carregar(t) {
     const [a, m, p, av] = await Promise.all([
@@ -99,6 +103,28 @@ export default function AlunoDetalhe() {
     setSalvando(false)
   }
 
+  // Troca/remoção de foto do aluno (admin/recepcionista). O CapturaFoto entrega
+  // um data URL (webcam/arquivo) ou null (remover); convertemos para File no upload.
+  async function mudarFotoAluno(dataUrl) {
+    setFotoMsg('')
+    setFotoBusy(true)
+    try {
+      if (dataUrl) {
+        const blob = await (await fetch(dataUrl)).blob()
+        const file = new File([blob], 'foto.jpg', { type: blob.type || 'image/jpeg' })
+        await adminUploadAvatarUsuario(token, aluno.profile_id, file)
+        setFotoMsg('Foto atualizada.')
+      } else {
+        await adminRemoverAvatarUsuario(token, aluno.profile_id)
+        setFotoMsg('Foto removida.')
+      }
+      await carregar(token)
+    } catch (err) {
+      setFotoMsg(err.message)
+    }
+    setFotoBusy(false)
+  }
+
   async function pagar(mensalidadeId) {
     if (!confirm('Confirmar pagamento desta mensalidade?')) return
     try {
@@ -111,7 +137,7 @@ export default function AlunoDetalhe() {
 
   const input = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white"
 
-  if (loading) return <p className="text-gray-400 py-8">Carregando...</p>
+  if (loading) return <AlunoDetalheSkeleton />
   if (!aluno) return <p className="text-red-500">Aluno não encontrado.</p>
 
   const profile = aluno.profiles || {}
@@ -135,6 +161,18 @@ export default function AlunoDetalhe() {
             ✏️ Editar
           </button>
         )}
+      </div>
+
+      {/* Foto do aluno */}
+      <div className="bg-white rounded-xl shadow-sm p-5">
+        <h2 className="text-sm font-semibold text-gray-700 mb-3">Foto do aluno</h2>
+        <CapturaFoto
+          value={profile.avatar_url}
+          nome={profile.nome}
+          onChange={mudarFotoAluno}
+          disabled={fotoBusy}
+        />
+        {fotoMsg && <p className="text-xs text-gray-500 mt-2">{fotoMsg}</p>}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

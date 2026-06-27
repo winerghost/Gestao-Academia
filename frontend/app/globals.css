@@ -1,1 +1,89 @@
 @import "tailwindcss";
+
+/* Habilita o prefixo dark: usando a classe .dark no <html> */
+@variant dark (&:where(.dark, .dark *));
+
+/* ── Variáveis de tema (modo claro — padrão) ─────────────────────────────── */
+:root {
+  --cor-destaque:      #f97316;
+
+  --bg-navbar:         #3c8dbc;
+  --bg-navbar-brand:   #367fa9;
+  --bg-sidebar:        #222d32;
+  --bg-sidebar-header: #1a2226;
+  --bg-content:        #ecf0f5;
+  --bg-card:           #ffffff;
+  --bg-white:          #ffffff;
+
+  --nav-active:        #1e282c;
+  --nav-text:          #8aa4af;
+  --nav-label:         #4b6269;
+
+  --text-primary:      #1f2937;
+  --text-muted:        #6b7280;
+  --text-sidebar-name: #ffffff;
+
+  --border-color:      #d2d6de;
+  --hr-color:          #d2d6de;
+  --footer-bg:         #ffffff;
+  --footer-text:       #666666;
+}
+
+/* ── Modo escuro ─────────────────────────────────────────────────────────── */
+html.dark {
+  --bg-navbar:         #1a1f2e;
+  --bg-navbar-brand:   #141824;
+  --bg-sidebar:        #0f141e;
+  --bg-sidebar-header: #090d14;
+  --bg-content:        #111827;
+  --bg-card:           #1f2937;
+  --bg-white:          #1f2937;
+
+  --nav-active:        #090d14;
+  --nav-text:          #6b7280;
+  --nav-label:         #374151;
+
+  --text-primary:      #f9fafb;
+  --text-muted:        #9ca3af;
+  --text-sidebar-name: #f9fafb;
+
+  --border-color:      #374151;
+  --hr-color:          #374151;
+  --footer-bg:         #1f2937;
+  --footer-text:       #9ca3af;
+}
+
+/* ── Overrides dark mode para classes Tailwind usadas nas páginas ────────── */
+/*    Evita reescrever todos os componentes individualmente.                  */
+html.dark .bg-white          { background-color: #1f2937 !important; }
+html.dark .bg-gray-50        { background-color: #111827 !important; }
+html.dark .bg-gray-100       { background-color: #1f2937 !important; }
+
+html.dark .text-gray-900     { color: #f9fafb !important; }
+html.dark .text-gray-800     { color: #f3f4f6 !important; }
+html.dark .text-gray-700     { color: #e5e7eb !important; }
+html.dark .text-gray-600     { color: #d1d5db !important; }
+html.dark .text-gray-500     { color: #9ca3af !important; }
+html.dark .text-gray-400     { color: #6b7280 !important; }
+
+html.dark .border-gray-200   { border-color: #374151 !important; }
+html.dark .border-gray-100   { border-color: #374151 !important; }
+
+html.dark .divide-gray-200 > * + * { border-color: #374151 !important; }
+
+html.dark .shadow-sm         { box-shadow: 0 1px 2px rgba(0,0,0,0.4) !important; }
+
+html.dark input,
+html.dark select,
+html.dark textarea {
+  background-color: #111827 !important;
+  color: #f9fafb !important;
+  border-color: #374151 !important;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder { color: #6b7280 !important; }
+
+html.dark table thead th { background-color: #111827 !important; color: #9ca3af !important; }
+html.dark table tbody tr  { border-color: #374151 !important; }
+html.dark table tbody tr:hover { background-color: #111827 !important; }

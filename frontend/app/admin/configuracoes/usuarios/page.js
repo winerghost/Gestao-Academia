@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '../../../../lib/supabase'
@@ -34,6 +34,8 @@ export default function UsuariosKanbanPage() {
   const [erro, setErro]         = useState(null)
   const [toast, setToast]       = useState(null)
   const [dragOver, setDragOver] = useState(null)
+  const [busca, setBusca]       = useState('')
+  const [buscaDebounced, setBuscaDebounced] = useState('')
   const dragging = useRef(null)   // { id, tipo }
 
   // Tabela "Equipe"
@@ -41,6 +43,18 @@ export default function UsuariosKanbanPage() {
   const [pageSize, setPageSize] = useState(20)
   const [page, setPage]         = useState(1)
   const [sortAsc, setSortAsc]   = useState(true)
+
+  // Debounce de 400ms para não disparar fetch a cada tecla
+  useEffect(() => {
+    const t = setTimeout(() => setBuscaDebounced(busca), 400)
+    return () => clearTimeout(t)
+  }, [busca])
+
+  const buscarUsuarios = useCallback(async (tok, termo) => {
+    const params = termo ? { busca: termo } : {}
+    const lista = await getUsuarios(tok, params)
+    setUsuarios(lista)
+  }, [])
 
   useEffect(() => {
     async function init() {
@@ -51,15 +65,19 @@ export default function UsuariosKanbanPage() {
         if (me.tipo !== 'admin') { router.replace('/admin'); return }
         setMeId(me.id)
         setToken(session.access_token)
-        const lista = await getUsuarios(session.access_token)
-        setUsuarios(lista)
+        await buscarUsuarios(session.access_token, '')
       } catch (e) {
         setErro(e.message)
       }
       setLoading(false)
     }
     init()
-  }, [router])
+  }, [router, buscarUsuarios])
+
+  // Re-fetch quando a busca mudar (após debounce)
+  useEffect(() => {
+    if (token) buscarUsuarios(token, buscaDebounced)
+  }, [buscaDebounced, token, buscarUsuarios])
 
   function showToast(msg, ok = true) {
     setToast({ msg, ok })
@@ -67,7 +85,7 @@ export default function UsuariosKanbanPage() {
   }
 
   function porTipo(tipo) {
-    return usuarios.filter(u => u.tipo === tipo)
+    return usuarios.filter(u => u.tipo === tipo && u.ativo !== false)
   }
 
   function onDragStart(e, usuario) {
@@ -97,6 +115,11 @@ export default function UsuariosKanbanPage() {
       return
     }
 
+    if (novoTipo === 'aluno') {
+      showToast('Alunos devem ser cadastrados pelo formulário "Novo Aluno" (CPF obrigatório).', false)
+      return
+    }
+
     // Atualização optimista
     setUsuarios(prev =>
       prev.map(x => x.id === u.id ? { ...x, tipo: novoTipo } : x)
@@ -118,6 +141,10 @@ export default function UsuariosKanbanPage() {
   async function mudarCargo(u, novoTipo) {
     if (novoTipo === u.tipo) return
     if (u.id === meId) { showToast('Você não pode alterar seu próprio papel.', false); return }
+    if (novoTipo === 'aluno') {
+      showToast('Alunos devem ser cadastrados pelo formulário "Novo Aluno" (CPF obrigatório).', false)
+      return
+    }
     const anterior = u.tipo
     setUsuarios(prev => prev.map(x => x.id === u.id ? { ...x, tipo: novoTipo } : x))
     try {
@@ -162,10 +189,21 @@ export default function UsuariosKanbanPage() {
         <Link href="/admin/configuracoes" className="text-sm text-gray-400 hover:text-gray-600 mb-2 inline-block">
           ‹ Voltar para Configurações
         </Link>
-        <h1 className="text-2xl font-bold text-gray-800">Usuários</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Arraste um usuário para a coluna do papel desejado.
-        </p>
+        <div className="flex items-end justify-between flex-wrap gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800">Usuários</h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Arraste um usuário para a coluna do papel desejado.
+            </p>
+          </div>
+          <input
+            type="text"
+            placeholder="Buscar por nome ou e-mail..."
+            value={busca}
+            onChange={e => setBusca(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white w-full sm:w-72"
+          />
+        </div>
       </div>
 
       {/* Kanban */}

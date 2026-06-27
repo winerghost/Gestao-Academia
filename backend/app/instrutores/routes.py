@@ -17,9 +17,12 @@ instrutores_bp = Blueprint("instrutores", __name__, url_prefix="/instrutores")
 @instrutores_bp.get("")
 @require_role("admin", "recepcionista")
 def listar():
+    # profiles!inner garante que só aparecem instrutores cujo tipo ainda é
+    # "instrutor" — remove automaticamente quem foi rebaixado via Kanban.
     result = (
         supabase.table("instrutores")
-        .select("*, profiles(nome, telefone)")
+        .select("*, profiles!inner(nome, telefone)")
+        .filter("profiles.tipo", "eq", "instrutor")
         .order("created_at", desc=True)
         .execute()
     )

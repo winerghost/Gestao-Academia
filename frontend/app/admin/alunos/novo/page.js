@@ -4,13 +4,14 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '../../../../lib/supabase'
 import { criarAluno } from '../../../../lib/api'
+import CapturaFoto from '../_CapturaFoto'
 
 export default function NovoAluno() {
   const router = useRouter()
   const [form, setForm] = useState({
     nome: '', email: '', senha: '', cpf: '', telefone: '',
     data_nascimento: '', endereco: '', status: 'ativo',
-    frequencia_habilitada: false,
+    frequencia_habilitada: false, foto: null,
   })
   const [erro, setErro] = useState('')
   const [loading, setLoading] = useState(false)
@@ -45,6 +46,13 @@ export default function NovoAluno() {
 
       <div className="bg-white rounded-xl shadow-sm p-6 max-w-2xl">
         <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
+          <div className="col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Foto do aluno</label>
+            <CapturaFoto value={form.foto} nome={form.nome} onChange={d => set('foto', d)} disabled={loading} />
+            <p className="text-xs text-gray-400 mt-2">
+              Se o e-mail do aluno tiver um Gravatar, ele será usado no lugar desta foto.
+            </p>
+          </div>
           <div className="col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-1">Nome completo *</label>
             <input className={input} value={form.nome} onChange={e => set('nome', e.target.value)} required placeholder="João da Silva" />

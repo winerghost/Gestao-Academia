@@ -10,8 +10,17 @@ from ..schemas import (
 )
 from ..validation import validate_body
 from ..errors import email_ja_cadastrado
+from ..auth.avatar import (
+    AvatarError,
+    processar_imagem_base64,
+    upload_avatar,
+    url_gravatar,
+    gravatar_existe,
+)
 
 alunos_bp = Blueprint("alunos", __name__, url_prefix="/alunos")
+
+_LIMITES_VALIDOS = frozenset({50, 100, 200})
 
 
 # ── Alunos ────────────────────────────────────────────────────────────────────
@@ -20,24 +29,61 @@ alunos_bp = Blueprint("alunos", __name__, url_prefix="/alunos")
 @require_role("admin", "recepcionista")
 def listar():
     status = request.args.get("status")   # ativo | inativo | inadimplente
-    cpf = request.args.get("cpf")
+    cpf    = request.args.get("cpf")
+    busca  = request.args.get("busca", "").strip()
 
-    query = supabase.table("alunos").select("*, profiles(nome, telefone)")
+    try:
+        limit  = int(request.args.get("limit", 50))
+        offset = int(request.args.get("offset", 0))
+    except (ValueError, TypeError):
+        limit, offset = 50, 0
+
+    if limit not in _LIMITES_VALIDOS:
+        limit = 50
+    offset = max(0, offset)
+
+    query = supabase.table("alunos").select("*, profiles(nome, telefone)", count="exact")
 
     if status in ("ativo", "inativo", "inadimplente"):
         query = query.eq("status", status)
     if cpf:
-        cpf_limpo = re.sub(r"\D", "", cpf)
-        query = query.eq("cpf", cpf_limpo)
+        query = query.eq("cpf", re.sub(r"\D", "", cpf))
+    if busca:
+        if re.fullmatch(r"\d+", re.sub(r"\D", "", busca)) and not re.search(r"[A-Za-zÀ-ÿ]", busca):
+            # somente dígitos → busca por CPF parcial
+            query = query.ilike("cpf", f"%{re.sub(r'[^0-9]', '', busca)}%")
+        else:
+            # texto → busca por nome no profile relacionado
+            query = query.filter("profiles.nome", "ilike", f"%{busca}%")
 
-    result = query.order("created_at", desc=True).execute()
-    return jsonify(result.data)
+    result = (
+        query
+        .order("created_at", desc=True)
+        .range(offset, offset + limit - 1)
+        .execute()
+    )
+    return jsonify({
+        "data":   result.data,
+        "total":  result.count,
+        "limit":  limit,
+        "offset": offset,
+    })
 
 
 @alunos_bp.post("")
 @require_role("admin", "recepcionista")
 @validate_body(AlunoCreateSchema)
 def criar(payload: AlunoCreateSchema):
+    # 0. Valida/processa a foto ANTES de criar o usuário: assim uma imagem
+    #    inválida não deixa um usuário órfão no Auth. O Pillow re-encoda
+    #    (descarta EXIF/payloads) — sanitização no backend.
+    foto_jpeg = None
+    if payload.foto:
+        try:
+            foto_jpeg = processar_imagem_base64(payload.foto)
+        except AvatarError as e:
+            return jsonify({"error": str(e)}), 400
+
     # 1. Cria usuário no Supabase Auth (trigger cria o profile automaticamente)
     try:
         user_resp = supabase.auth.admin.create_user({
@@ -52,11 +98,31 @@ def criar(payload: AlunoCreateSchema):
         msg = "E-mail já cadastrado" if email_ja_cadastrado(e) else "Não foi possível criar o usuário"
         return jsonify({"error": msg}), 400
 
-    # 2. Atualiza telefone no profile (o trigger só popula nome e tipo)
-    if payload.telefone:
-        supabase.table("profiles").update({"telefone": payload.telefone}).eq("id", user_id).execute()
+    # 2. Define o avatar SOMENTE quando há foto enviada. Aí o Gravatar PREVALECE
+    #    sobre a foto: se o e-mail tiver Gravatar usamos ele, senão subimos a
+    #    foto. Sem foto não consultamos o Gravatar — evita uma chamada de rede em
+    #    todo cadastro. Falha aqui não derruba o cadastro (fica sem foto/iniciais).
+    avatar_url = None
+    if foto_jpeg:
+        try:
+            if gravatar_existe(payload.email):
+                avatar_url = url_gravatar(payload.email)
+            else:
+                avatar_url = upload_avatar(supabase, user_id, foto_jpeg)
+        except Exception:
+            current_app.logger.exception("Falha ao definir avatar do aluno no cadastro")
 
-    # 3. Cria registro do aluno vinculado ao profile
+    # 3. Atualiza o profile (telefone + avatar_url numa só escrita; o trigger
+    #    só popula nome e tipo).
+    prof_update = {}
+    if payload.telefone:
+        prof_update["telefone"] = payload.telefone
+    if avatar_url:
+        prof_update["avatar_url"] = avatar_url
+    if prof_update:
+        supabase.table("profiles").update(prof_update).eq("id", user_id).execute()
+
+    # 4. Cria registro do aluno vinculado ao profile
     try:
         aluno_resp = supabase.table("alunos").insert({
             "profile_id": user_id,
@@ -84,7 +150,7 @@ def buscar(aluno_id):
     db = get_user_client(g.access_token)
     result = (
         db.table("alunos")
-        .select("*, profiles(nome, telefone), aluno_planos(id, status, data_inicio, data_fim, planos(nome, valor))")
+        .select("*, profiles(nome, telefone, avatar_url), aluno_planos(id, status, data_inicio, data_fim, planos(nome, valor))")
         .eq("id", str(aluno_id))
         .maybe_single()
         .execute()

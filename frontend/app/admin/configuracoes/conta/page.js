@@ -1,14 +1,21 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '../../../../lib/supabase'
-import { getMe, atualizarMe, trocarSenha } from '../../../../lib/api'
+import {
+  getMe, atualizarMe, trocarSenha,
+  uploadAvatar, removerAvatar, usarGravatar,
+} from '../../../../lib/api'
 
 const input = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2'
 const ring = { '--tw-ring-color': 'var(--cor-destaque)' }
 const btn = 'text-white px-5 py-2 rounded-lg text-sm font-medium transition disabled:opacity-60'
 const btnStyle = { backgroundColor: 'var(--cor-destaque)' }
+
+// Tipos e tamanho aceitos no cliente (o backend revalida e re-encoda).
+const AVATAR_TIPOS = ['image/jpeg', 'image/png', 'image/webp']
+const AVATAR_MAX = 4 * 1024 * 1024 // 4 MB
 
 function Aviso({ tipo, children }) {
   if (!children) return null
@@ -16,6 +23,42 @@ function Aviso({ tipo, children }) {
     ? 'text-red-600 bg-red-50'
     : 'text-green-700 bg-green-50'
   return <p className={`text-sm rounded-lg px-3 py-2 ${cor}`}>{children}</p>
+}
+
+function iniciais(nome = '') {
+  return nome.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase() || 'GA'
+}
+
+// Mostra a foto; se a URL quebrar (ex.: Gravatar removido), cai nas iniciais.
+function AvatarPreview({ url, nome }) {
+  const [erro, setErro] = useState(false)
+  // Reseta o erro quando a URL muda — ajuste de estado durante o render
+  // (padrão recomendado do React; evita setState dentro de useEffect).
+  const [urlAnterior, setUrlAnterior] = useState(url)
+  if (url !== urlAnterior) {
+    setUrlAnterior(url)
+    setErro(false)
+  }
+  if (url && !erro) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- avatar pequeno, URL remota (Supabase/Gravatar); next/image exigiria remotePatterns sem ganho real
+      <img
+        src={url}
+        alt="Foto de perfil"
+        onError={() => setErro(true)}
+        className="w-24 h-24 rounded-full object-cover flex-shrink-0"
+        style={{ border: '1px solid var(--border-color)' }}
+      />
+    )
+  }
+  return (
+    <div
+      className="w-24 h-24 rounded-full flex items-center justify-center text-2xl font-bold text-white flex-shrink-0"
+      style={{ backgroundColor: 'var(--cor-destaque)' }}
+    >
+      {iniciais(nome)}
+    </div>
+  )
 }
 
 export default function ContaPage() {
@@ -27,6 +70,12 @@ export default function ContaPage() {
   const [perfil, setPerfil] = useState({ nome: '', telefone: '' })
   const [salvandoPerfil, setSalvandoPerfil] = useState(false)
   const [msgPerfil, setMsgPerfil] = useState({ tipo: '', texto: '' })
+
+  // Foto de perfil (avatar)
+  const fileRef = useRef(null)
+  const [avatarUrl, setAvatarUrl] = useState(null)
+  const [avatarBusy, setAvatarBusy] = useState('') // '', 'upload', 'gravatar', 'remover'
+  const [msgAvatar, setMsgAvatar] = useState({ tipo: '', texto: '' })
 
   // Senha
   const [senha, setSenha] = useState({ senha_atual: '', senha_nova: '', confirmar: '' })
@@ -41,11 +90,68 @@ export default function ContaPage() {
       try {
         const me = await getMe(session.access_token)
         setPerfil({ nome: me.nome || '', telefone: me.telefone || '' })
+        setAvatarUrl(me.avatar_url || null)
       } catch { /* layout trata */ }
       setLoading(false)
     }
     init()
   }, [router])
+
+  // Atualiza o estado local e avisa o layout (navbar/sidebar) em tempo real.
+  function aplicarAvatar(url) {
+    setAvatarUrl(url)
+    window.dispatchEvent(new CustomEvent('avatar-atualizado', { detail: url }))
+  }
+
+  async function aoSelecionarArquivo(e) {
+    const file = e.target.files?.[0]
+    e.target.value = '' // permite reenviar o mesmo arquivo depois
+    if (!file) return
+    setMsgAvatar({ tipo: '', texto: '' })
+    if (!AVATAR_TIPOS.includes(file.type)) {
+      setMsgAvatar({ tipo: 'erro', texto: 'Formato inválido. Use JPG, PNG ou WEBP.' })
+      return
+    }
+    if (file.size > AVATAR_MAX) {
+      setMsgAvatar({ tipo: 'erro', texto: 'Imagem grande demais (máx. 4 MB).' })
+      return
+    }
+    setAvatarBusy('upload')
+    try {
+      const { avatar_url } = await uploadAvatar(token, file)
+      aplicarAvatar(avatar_url)
+      setMsgAvatar({ tipo: 'ok', texto: 'Foto atualizada com sucesso.' })
+    } catch (err) {
+      setMsgAvatar({ tipo: 'erro', texto: err.message })
+    }
+    setAvatarBusy('')
+  }
+
+  async function aoUsarGravatar() {
+    setMsgAvatar({ tipo: '', texto: '' })
+    setAvatarBusy('gravatar')
+    try {
+      const { avatar_url } = await usarGravatar(token)
+      aplicarAvatar(avatar_url)
+      setMsgAvatar({ tipo: 'ok', texto: 'Gravatar aplicado como foto de perfil.' })
+    } catch (err) {
+      setMsgAvatar({ tipo: 'erro', texto: err.message })
+    }
+    setAvatarBusy('')
+  }
+
+  async function aoRemoverFoto() {
+    setMsgAvatar({ tipo: '', texto: '' })
+    setAvatarBusy('remover')
+    try {
+      await removerAvatar(token)
+      aplicarAvatar(null)
+      setMsgAvatar({ tipo: 'ok', texto: 'Foto removida.' })
+    } catch (err) {
+      setMsgAvatar({ tipo: 'erro', texto: err.message })
+    }
+    setAvatarBusy('')
+  }
 
   async function salvarPerfil(e) {
     e.preventDefault()
@@ -90,6 +196,59 @@ export default function ContaPage() {
         ‹ Voltar para Configurações
       </Link>
       <h1 className="text-2xl font-bold text-gray-800 mt-2 mb-6">Conta</h1>
+
+      {/* Foto do perfil */}
+      <div className="bg-white rounded-xl shadow-sm p-5 mb-6">
+        <h2 className="text-sm font-semibold text-gray-700 mb-4">Foto do perfil</h2>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-5">
+          <AvatarPreview url={avatarUrl} nome={perfil.nome} />
+
+          <div className="flex-1 min-w-0">
+            {/* input de arquivo escondido — disparado pelo botão */}
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={aoSelecionarArquivo}
+            />
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className={btn}
+                style={btnStyle}
+                disabled={!!avatarBusy}
+                onClick={() => fileRef.current?.click()}
+              >
+                {avatarBusy === 'upload' ? 'Enviando...' : (avatarUrl ? 'Trocar foto' : 'Enviar foto')}
+              </button>
+              <button
+                type="button"
+                className="px-5 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-700 hover:bg-gray-50 transition disabled:opacity-60"
+                disabled={!!avatarBusy}
+                onClick={aoUsarGravatar}
+              >
+                {avatarBusy === 'gravatar' ? 'Buscando...' : 'Usar meu Gravatar'}
+              </button>
+              {avatarUrl && (
+                <button
+                  type="button"
+                  className="px-5 py-2 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition disabled:opacity-60"
+                  disabled={!!avatarBusy}
+                  onClick={aoRemoverFoto}
+                >
+                  {avatarBusy === 'remover' ? 'Removendo...' : 'Remover foto'}
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-gray-400 mt-2">
+              JPG, PNG ou WEBP até 4 MB. A imagem é recortada em formato quadrado.
+              O Gravatar usa a foto vinculada ao e-mail da sua conta.
+            </p>
+            <div className="mt-2"><Aviso tipo={msgAvatar.tipo}>{msgAvatar.texto}</Aviso></div>
+          </div>
+        </div>
+      </div>
 
       {/* Perfil */}
       <div className="bg-white rounded-xl shadow-sm p-5 mb-6">

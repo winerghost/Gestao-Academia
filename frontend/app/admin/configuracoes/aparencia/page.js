@@ -4,23 +4,25 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '../../../../lib/supabase'
 import { getMe, atualizarMe } from '../../../../lib/api'
-import { aplicarTema, CORES_DESTAQUE, COR_PADRAO } from '../../../../lib/tema'
+import { aplicarTema, CORES_DESTAQUE, MODOS, COR_PADRAO } from '../../../../lib/tema'
 
 const TAMANHOS = [
-  ['pequena', 'Pequena'],
-  ['normal', 'Normal'],
-  ['grande', 'Grande'],
+  ['pequena', 'Pequena (14px)'],
+  ['normal',  'Normal (16px)'],
+  ['grande',  'Grande (18px)'],
 ]
 
 export default function AparenciaPage() {
   const router = useRouter()
-  const [token, setToken] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [token,    setToken]    = useState('')
+  const [loading,  setLoading]  = useState(true)
   const [salvando, setSalvando] = useState(false)
-  const [msg, setMsg] = useState({ tipo: '', texto: '' })
+  const [msg,      setMsg]      = useState({ tipo: '', texto: '' })
 
-  const [cor, setCor] = useState(COR_PADRAO)
-  const [fonte, setFonte] = useState('normal')
+  const [cor,             setCor]             = useState(COR_PADRAO)
+  const [fonte,           setFonte]           = useState('normal')
+  const [modo,            setModo]            = useState('claro')
+  const [sidebarCompacta, setSidebarCompacta] = useState(false)
 
   useEffect(() => {
     async function init() {
@@ -29,49 +31,85 @@ export default function AparenciaPage() {
       setToken(session.access_token)
       try {
         const me = await getMe(session.access_token)
-        const p = me.preferencias || {}
+        const p  = me.preferencias || {}
         setCor(p.cor_destaque || COR_PADRAO)
         setFonte(p.tamanho_fonte || 'normal')
+        setModo(p.modo || 'claro')
+        setSidebarCompacta(p.sidebar_compacta || false)
       } catch { /* layout trata */ }
       setLoading(false)
     }
     init()
   }, [router])
 
-  // Pré-visualização ao vivo: aplica o tema enquanto o usuário escolhe.
+  // Pré-visualização ao vivo — só aplica quando a cor for um hex válido.
   useEffect(() => {
-    if (!loading) aplicarTema({ cor_destaque: cor, tamanho_fonte: fonte })
-  }, [cor, fonte, loading])
+    if (!loading && /^#[0-9a-fA-F]{6}$/.test(cor)) {
+      aplicarTema({ cor_destaque: cor, tamanho_fonte: fonte, modo })
+    }
+  }, [cor, fonte, modo, loading])
 
   async function salvar() {
+    if (!/^#[0-9a-fA-F]{6}$/.test(cor)) {
+      setMsg({ tipo: 'erro', texto: 'Cor inválida. Use o formato #rrggbb (ex: #3b82f6).' })
+      return
+    }
     setSalvando(true)
     setMsg({ tipo: '', texto: '' })
     try {
-      await atualizarMe(token, { preferencias: { cor_destaque: cor, tamanho_fonte: fonte } })
-      aplicarTema({ cor_destaque: cor, tamanho_fonte: fonte })
-      setMsg({ tipo: 'ok', texto: 'Aparência salva.' })
+      const prefs = { cor_destaque: cor, tamanho_fonte: fonte, modo, sidebar_compacta: sidebarCompacta }
+      await atualizarMe(token, { preferencias: prefs })
+      aplicarTema(prefs)
+      setMsg({ tipo: 'ok', texto: 'Aparência salva com sucesso!' })
     } catch (err) {
       setMsg({ tipo: 'erro', texto: err.message })
     }
     setSalvando(false)
   }
 
-  if (loading) return <p className="text-gray-400">Carregando...</p>
+  if (loading) return <p style={{ color: 'var(--text-muted)' }}>Carregando...</p>
 
   return (
     <div className="max-w-2xl">
-      <Link href="/admin/configuracoes" className="text-sm text-gray-500 hover:text-gray-700">
+      <Link href="/admin/configuracoes" className="text-sm hover:underline" style={{ color: 'var(--text-muted)' }}>
         ‹ Voltar para Configurações
       </Link>
-      <h1 className="text-2xl font-bold text-gray-800 mt-2 mb-1">Aparência</h1>
-      <p className="text-sm text-gray-500 mb-6">
-        Personalize o painel. As mudanças são aplicadas só para a sua conta.
+      <h1 className="text-2xl font-bold mt-2 mb-1" style={{ color: 'var(--text-primary)' }}>Aparência</h1>
+      <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
+        Personalize o painel. As mudanças são aplicadas somente para a sua conta.
       </p>
 
-      <div className="bg-white rounded-xl shadow-sm p-5 space-y-6">
-        {/* Cor de destaque */}
+      <div className="rounded-xl shadow-sm p-5 space-y-6" style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+
+        {/* ── Modo ─────────────────────────────────────── */}
         <div>
-          <p className="text-sm font-medium text-gray-700 mb-3">Cor de destaque</p>
+          <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Modo</p>
+          <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+            "Sistema" acompanha automaticamente o tema do seu SO.
+          </p>
+          <div className="flex gap-2">
+            {MODOS.map(({ valor, label, icone }) => (
+              <button key={valor} type="button" onClick={() => setModo(valor)}
+                className="flex-1 flex flex-col items-center gap-1 py-3 rounded-lg border text-sm font-medium transition"
+                style={modo === valor
+                  ? { backgroundColor: 'var(--cor-destaque)', color: '#fff', borderColor: 'var(--cor-destaque)' }
+                  : { borderColor: 'var(--border-color)', color: 'var(--text-muted)', backgroundColor: 'transparent' }}
+              >
+                <span className="text-xl">{icone}</span>
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <hr style={{ borderColor: 'var(--border-color)' }} />
+
+        {/* ── Cor de destaque ──────────────────────────── */}
+        <div>
+          <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Cor de destaque</p>
+          <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+            Afeta a barra superior, itens ativos do menu e botões.
+          </p>
           <div className="flex flex-wrap gap-3">
             {CORES_DESTAQUE.map(c => (
               <button key={c.valor} type="button" onClick={() => setCor(c.valor)}
@@ -79,28 +117,64 @@ export default function AparenciaPage() {
                 className="w-10 h-10 rounded-full flex items-center justify-center transition"
                 style={{
                   backgroundColor: c.valor,
-                  outline: cor === c.valor ? '3px solid rgba(0,0,0,0.15)' : 'none',
+                  outline: cor === c.valor ? '3px solid rgba(0,0,0,0.2)' : 'none',
                   outlineOffset: 2,
+                  boxShadow: cor === c.valor ? `0 0 0 3px ${c.valor}40` : 'none',
                 }}
               >
                 {cor === c.valor && <span className="text-white text-lg leading-none">✓</span>}
               </button>
             ))}
           </div>
+
+          {/* Campo hex livre */}
+          <div className="flex items-center gap-3 mt-4">
+            <div
+              className="w-9 h-9 rounded-lg border flex-shrink-0"
+              style={{ backgroundColor: cor, borderColor: 'var(--border-color)' }}
+            />
+            <input
+              type="text"
+              value={cor}
+              placeholder="Ex: #3b82f6 — qualquer cor hexadecimal de 6 dígitos"
+              maxLength={7}
+              onChange={e => {
+                const v = e.target.value
+                setCor(v)
+                // aplica preview só quando o hex estiver completo e válido
+                if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+                  aplicarTema({ cor_destaque: v, tamanho_fonte: fonte, modo })
+                }
+              }}
+              className="flex-1 text-sm font-mono rounded-lg px-3 py-2 border outline-none focus:ring-2"
+              style={{
+                backgroundColor: 'var(--bg-content)',
+                borderColor: /^#[0-9a-fA-F]{6}$/.test(cor) ? 'var(--border-color)' : '#ef4444',
+                color: 'var(--text-primary)',
+                '--tw-ring-color': 'var(--cor-destaque)',
+              }}
+            />
+            {!/^#[0-9a-fA-F]{6}$/.test(cor) && (
+              <span className="text-xs text-red-500 whitespace-nowrap">Hex inválido</span>
+            )}
+          </div>
+          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+            Clique num círculo acima ou digite manualmente. Formato: <span className="font-mono">#rrggbb</span>
+          </p>
         </div>
 
-        <hr className="border-gray-100" />
+        <hr style={{ borderColor: 'var(--border-color)' }} />
 
-        {/* Tamanho da fonte */}
+        {/* ── Tamanho da fonte ─────────────────────────── */}
         <div>
-          <p className="text-sm font-medium text-gray-700 mb-3">Tamanho da fonte</p>
+          <p className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>Tamanho da fonte</p>
           <div className="flex gap-2">
             {TAMANHOS.map(([k, label]) => (
               <button key={k} type="button" onClick={() => setFonte(k)}
                 className="px-4 py-2 rounded-lg text-sm font-medium border transition"
                 style={fonte === k
                   ? { backgroundColor: 'var(--cor-destaque)', color: '#fff', borderColor: 'var(--cor-destaque)' }
-                  : { borderColor: '#e5e7eb', color: '#6b7280' }}
+                  : { borderColor: 'var(--border-color)', color: 'var(--text-muted)', backgroundColor: 'transparent' }}
               >
                 {label}
               </button>
@@ -108,20 +182,63 @@ export default function AparenciaPage() {
           </div>
         </div>
 
-        <hr className="border-gray-100" />
+        <hr style={{ borderColor: 'var(--border-color)' }} />
 
-        {/* Pré-visualização */}
+        {/* ── Sidebar ──────────────────────────────────── */}
         <div>
-          <p className="text-sm font-medium text-gray-700 mb-3">Pré-visualização</p>
-          <div className="rounded-lg border border-gray-100 p-4 flex items-center gap-3">
-            <span className="px-4 py-2 rounded-lg text-white text-sm font-medium"
-              style={{ backgroundColor: 'var(--cor-destaque)' }}>
-              Botão de exemplo
+          <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Sidebar</p>
+          <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+            Iniciar com a sidebar recolhida para mais espaço de conteúdo.
+          </p>
+          <label className="flex items-center gap-3 cursor-pointer w-fit">
+            <div className="relative">
+              <input type="checkbox" className="sr-only" checked={sidebarCompacta}
+                onChange={e => setSidebarCompacta(e.target.checked)} />
+              <div
+                className="w-10 h-6 rounded-full transition-colors duration-200"
+                style={{ backgroundColor: sidebarCompacta ? 'var(--cor-destaque)' : 'var(--border-color)' }}
+              />
+              <div
+                className="absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200"
+                style={{ transform: sidebarCompacta ? 'translateX(20px)' : 'translateX(4px)' }}
+              />
+            </div>
+            <span className="text-sm" style={{ color: 'var(--text-primary)' }}>
+              Iniciar com sidebar recolhida
             </span>
-            <span className="text-sm" style={{ color: 'var(--cor-destaque)' }}>Texto destacado</span>
-          </div>
+          </label>
         </div>
 
+        <hr style={{ borderColor: 'var(--border-color)' }} />
+
+        {/* ── Pré-visualização ─────────────────────────── */}
+        <div>
+          <p className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>Pré-visualização</p>
+          <div className="rounded-lg overflow-hidden border" style={{ borderColor: 'var(--border-color)' }}>
+            {/* mini navbar */}
+            <div className="flex items-center gap-3 px-3 py-2 text-white text-xs" style={{ backgroundColor: 'var(--cor-destaque)' }}>
+              <span className="font-semibold">GestãoAcademia</span>
+              <span className="opacity-70">— Dashboard</span>
+            </div>
+            {/* mini content */}
+            <div className="flex" style={{ backgroundColor: 'var(--bg-content)', minHeight: 64 }}>
+              <div className="w-16 flex flex-col gap-1 p-2" style={{ backgroundColor: 'var(--bg-sidebar)' }}>
+                <div className="h-2 rounded" style={{ backgroundColor: 'var(--cor-destaque)', width: '80%' }} />
+                <div className="h-2 rounded opacity-40" style={{ backgroundColor: 'var(--nav-text)', width: '60%' }} />
+                <div className="h-2 rounded opacity-40" style={{ backgroundColor: 'var(--nav-text)', width: '70%' }} />
+              </div>
+              <div className="flex-1 p-3 flex flex-col gap-2">
+                <div className="h-3 rounded w-32" style={{ backgroundColor: 'var(--bg-card)', boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }} />
+                <div className="h-8 rounded" style={{ backgroundColor: 'var(--bg-card)', boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }} />
+              </div>
+            </div>
+          </div>
+          <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
+            A pré-visualização atualiza em tempo real conforme você altera as opções acima.
+          </p>
+        </div>
+
+        {/* ── Ações ────────────────────────────────────── */}
         <div className="flex items-center gap-3">
           <button type="button" onClick={salvar} disabled={salvando}
             className="text-white px-5 py-2 rounded-lg text-sm font-medium transition disabled:opacity-60"

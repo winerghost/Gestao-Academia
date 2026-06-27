@@ -4,6 +4,7 @@ import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '../../../../lib/supabase'
 import { getInstrutor, atualizarInstrutor, getInstrutorPlanos, vincularPlanoInstrutor, desvincularPlanoInstrutor, getPlanos } from '../../../../lib/api'
+import { InstrutorDetalheSkeleton } from './_skeleton'
 
 export default function InstrutorDetalhe() {
   const router = useRouter()
@@ -89,7 +90,7 @@ export default function InstrutorDetalhe() {
 
   const input = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white"
 
-  if (loading) return <p className="text-gray-400 py-8">Carregando...</p>
+  if (loading) return <InstrutorDetalheSkeleton />
   if (!instrutor) return <p className="text-red-500">Instrutor não encontrado.</p>
 
   const planosVinculadosIds = new Set(planos.map(ip => ip.plano_id))

@@ -5,6 +5,7 @@ CLAUDE.md
 *.png
 PLANEJAMENTO.md
 skills-lock.json
+memory
 
 # Python
 __pycache__/

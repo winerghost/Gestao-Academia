@@ -1,6 +1,18 @@
+import io
 from unittest.mock import patch, MagicMock
+
 import pytest
+from PIL import Image
+
 from app import create_app
+
+_UID = "00000000-0000-0000-0000-000000000009"
+
+
+def _png_bytes():
+    buf = io.BytesIO()
+    Image.new("RGB", (30, 20), (12, 34, 56)).save(buf, format="PNG")
+    return buf.getvalue()
 
 
 @pytest.fixture
@@ -234,6 +246,54 @@ def test_alterar_tipo_sucesso(client):
         assert res.get_json()["tipo"] == "instrutor"
 
 
+def test_alterar_tipo_para_instrutor_cria_registro_instrutores(client):
+    """Ao promover para instrutor, insere linha na tabela instrutores quando não existe."""
+    with patch("app.configuracoes.routes.supabase") as mock_supa, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth, tipo="admin")
+
+        profiles_tbl = MagicMock()
+        profiles_tbl.update.return_value.eq.return_value.execute.return_value = MagicMock(
+            data=[{"id": "u2", "tipo": "instrutor"}]
+        )
+
+        instrutores_tbl = MagicMock()
+        instrutores_tbl.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
+            data=None   # nenhum registro existente
+        )
+
+        mock_supa.table.side_effect = lambda name: profiles_tbl if name == "profiles" else instrutores_tbl
+
+        res = client.patch("/configuracoes/usuarios/u2/tipo",
+                           json={"tipo": "instrutor"}, headers=_auth_headers())
+        assert res.status_code == 200
+        instrutores_tbl.insert.assert_called_once_with({"profile_id": "u2"})
+
+
+def test_alterar_tipo_para_instrutor_nao_duplica_registro(client):
+    """Se já existe linha em instrutores, não deve inserir duplicata."""
+    with patch("app.configuracoes.routes.supabase") as mock_supa, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth, tipo="admin")
+
+        profiles_tbl = MagicMock()
+        profiles_tbl.update.return_value.eq.return_value.execute.return_value = MagicMock(
+            data=[{"id": "u3", "tipo": "instrutor"}]
+        )
+
+        instrutores_tbl = MagicMock()
+        instrutores_tbl.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
+            data={"id": "inst-uuid"}   # registro já existe
+        )
+
+        mock_supa.table.side_effect = lambda name: profiles_tbl if name == "profiles" else instrutores_tbl
+
+        res = client.patch("/configuracoes/usuarios/u3/tipo",
+                           json={"tipo": "instrutor"}, headers=_auth_headers())
+        assert res.status_code == 200
+        instrutores_tbl.insert.assert_not_called()
+
+
 def test_alterar_tipo_proprio_bloqueado(client):
     with patch("app.auth.middleware.supabase") as mock_auth:
         _mock_auth(mock_auth, tipo="admin")
@@ -367,3 +427,85 @@ def test_login_conta_ativa_sucesso(client):
                           json={"email": "a@academia.com", "password": "secret"})
         assert res.status_code == 200
         assert res.get_json()["access_token"] == "at"
+
+
+# ── Avatar de usuário (admin/recepcionista alteram a foto de outro) ───────────
+
+def _mock_profile_existe(mock_supa, existe=True):
+    mock_supa.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
+        data={"id": _UID} if existe else None
+    )
+
+
+def test_definir_avatar_usuario_admin(client):
+    with patch("app.configuracoes.routes.supabase") as mock_supa, \
+         patch("app.configuracoes.routes.upload_avatar", return_value="https://cdn.fake/u/x.jpg") as mock_up, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth, tipo="admin")
+        _mock_profile_existe(mock_supa, True)
+        data = {"file": (io.BytesIO(_png_bytes()), "foto.png")}
+        res = client.post(f"/configuracoes/usuarios/{_UID}/avatar", headers=_auth_headers(),
+                          data=data, content_type="multipart/form-data")
+        assert res.status_code == 200
+        assert res.get_json()["avatar_url"] == "https://cdn.fake/u/x.jpg"
+        mock_up.assert_called_once()
+
+
+def test_definir_avatar_usuario_recepcionista(client):
+    with patch("app.configuracoes.routes.supabase") as mock_supa, \
+         patch("app.configuracoes.routes.upload_avatar", return_value="https://cdn.fake/u/y.jpg"), \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth, tipo="recepcionista")
+        _mock_profile_existe(mock_supa, True)
+        data = {"file": (io.BytesIO(_png_bytes()), "foto.png")}
+        res = client.post(f"/configuracoes/usuarios/{_UID}/avatar", headers=_auth_headers(),
+                          data=data, content_type="multipart/form-data")
+        assert res.status_code == 200
+
+
+def test_definir_avatar_usuario_instrutor_negado(client):
+    with patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth, tipo="instrutor")
+        data = {"file": (io.BytesIO(_png_bytes()), "foto.png")}
+        res = client.post(f"/configuracoes/usuarios/{_UID}/avatar", headers=_auth_headers(),
+                          data=data, content_type="multipart/form-data")
+        assert res.status_code == 403
+
+
+def test_definir_avatar_usuario_inexistente_404(client):
+    with patch("app.configuracoes.routes.supabase") as mock_supa, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth, tipo="admin")
+        _mock_profile_existe(mock_supa, False)
+        data = {"file": (io.BytesIO(_png_bytes()), "foto.png")}
+        res = client.post(f"/configuracoes/usuarios/{_UID}/avatar", headers=_auth_headers(),
+                          data=data, content_type="multipart/form-data")
+        assert res.status_code == 404
+
+
+def test_definir_avatar_usuario_sem_arquivo_400(client):
+    with patch("app.configuracoes.routes.supabase") as mock_supa, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth, tipo="admin")
+        _mock_profile_existe(mock_supa, True)
+        res = client.post(f"/configuracoes/usuarios/{_UID}/avatar", headers=_auth_headers())
+        assert res.status_code == 400
+
+
+def test_remover_avatar_usuario_admin(client):
+    with patch("app.configuracoes.routes.supabase") as mock_supa, \
+         patch("app.configuracoes.routes.remover_avatares_storage") as mock_rm, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth, tipo="admin")
+        _mock_profile_existe(mock_supa, True)
+        res = client.delete(f"/configuracoes/usuarios/{_UID}/avatar", headers=_auth_headers())
+        assert res.status_code == 200
+        assert res.get_json()["avatar_url"] is None
+        mock_rm.assert_called_once()
+
+
+def test_remover_avatar_usuario_instrutor_negado(client):
+    with patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth, tipo="instrutor")
+        res = client.delete(f"/configuracoes/usuarios/{_UID}/avatar", headers=_auth_headers())
+        assert res.status_code == 403

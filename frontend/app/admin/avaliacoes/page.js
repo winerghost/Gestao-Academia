@@ -35,11 +35,11 @@ export default function AvaliacoesPage() {
       if (!session) { router.replace('/login'); return }
       setToken(session.access_token)
       try {
-        const [, a] = await Promise.all([
+        const [, resp] = await Promise.all([
           carregar(session.access_token),
-          getAlunos(session.access_token),
+          getAlunos(session.access_token, { limit: 200 }),
         ])
-        setAlunos(a)
+        setAlunos(resp.data ?? [])
       } catch (err) {
         setErro(err.message || 'Erro ao carregar avaliações.')
       } finally {
