@@ -42,6 +42,9 @@ export const getMe = (token) => fetcher('/auth/me', token)
 export const getPortalMe = (token) => fetcher('/portal/me', token)
 export const getPortalMensalidades = (token) => fetcher('/portal/mensalidades', token)
 export const getPortalFrequencias = (token) => fetcher('/portal/frequencias', token)
+export const getPortalAvaliacoes = (token) => fetcher('/portal/avaliacoes', token)
+export const getPortalTreino = (token) => fetcher('/portal/treino', token)
+export const getPortalAvisos = (token) => fetcher('/portal/avisos', token)
 
 // Alunos
 export const getAlunos = (token, params = {}) => {

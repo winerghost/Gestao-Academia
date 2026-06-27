@@ -1,3 +1,4 @@
+from datetime import date, timedelta
 from flask import Blueprint, jsonify, g
 from ..supabase_client import supabase
 from ..auth.middleware import require_auth
@@ -101,3 +102,80 @@ def frequencias():
         .execute()
     )
     return jsonify(result.data)
+
+
+@portal_bp.get("/avaliacoes")
+@require_auth
+def portal_avaliacoes():
+    aluno = _aluno_do_usuario()
+    if not aluno:
+        return jsonify({"avaliacoes": [], "proxima_avaliacao": None})
+
+    result = (
+        supabase.table("avaliacoes")
+        .select(
+            "id, data_avaliacao, peso_kg, altura_cm, imc, gordura_corporal, "
+            "massa_magra_kg, circ_cintura, circ_quadril, circ_braco, circ_coxa, circ_peito"
+        )
+        .eq("aluno_id", aluno["id"])
+        .order("data_avaliacao", desc=True)
+        .limit(5)
+        .execute()
+    )
+
+    dados = result.data or []
+    proxima = None
+    if dados:
+        try:
+            ultima = date.fromisoformat(dados[0]["data_avaliacao"])
+            proxima = (ultima + timedelta(days=90)).isoformat()
+        except (ValueError, KeyError):
+            pass
+
+    return jsonify({"avaliacoes": dados, "proxima_avaliacao": proxima})
+
+
+@portal_bp.get("/treino")
+@require_auth
+def portal_treino():
+    aluno = _aluno_do_usuario()
+    if not aluno:
+        return jsonify([])
+
+    result = (
+        supabase.table("fichas_treino")
+        .select(
+            "id, nome, divisao, observacoes, "
+            "exercicios_ficha(id, nome, series, repeticoes, carga_kg, descanso_seg, ordem, observacoes)"
+        )
+        .eq("aluno_id", aluno["id"])
+        .eq("ativa", True)
+        .order("divisao")
+        .execute()
+    )
+
+    fichas = result.data or []
+    for ficha in fichas:
+        exs = ficha.get("exercicios_ficha") or []
+        ficha["exercicios_ficha"] = sorted(exs, key=lambda e: e.get("ordem", 0))
+
+    return jsonify(fichas)
+
+
+@portal_bp.get("/avisos")
+@require_auth
+def portal_avisos():
+    hoje = date.today().isoformat()
+
+    result = (
+        supabase.table("avisos")
+        .select("id, titulo, mensagem, tipo, data_inicio, data_fim")
+        .eq("ativo", True)
+        .lte("data_inicio", hoje)
+        .or_(f"data_fim.is.null,data_fim.gte.{hoje}")
+        .order("created_at", desc=True)
+        .limit(10)
+        .execute()
+    )
+
+    return jsonify(result.data or [])
