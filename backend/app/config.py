@@ -26,7 +26,13 @@ class Config:
     # Lista explícita de origens permitidas (sem wildcard). Em produção,
     # defina ALLOWED_ORIGINS com a(s) URL(s) do Next.js, ex.:
     # ALLOWED_ORIGINS="https://app.minhaacademia.com,https://homolog.minhaacademia.com"
-    ALLOWED_ORIGINS = _csv(os.getenv("ALLOWED_ORIGINS")) or ["http://localhost:3000"]
+    # No dev, o Next.js pode ser aberto tanto via "localhost" quanto via
+    # "127.0.0.1" — para o navegador são origens distintas, então liberamos
+    # ambas. Em produção, defina ALLOWED_ORIGINS explicitamente.
+    ALLOWED_ORIGINS = _csv(os.getenv("ALLOWED_ORIGINS")) or [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
 
     # ── Rate limiting (Flask-Limiter) ───────────────────────────────────────
     # Em produção use um backend compartilhado (ex.: redis://...) para que o
