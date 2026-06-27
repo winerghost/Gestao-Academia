@@ -2,8 +2,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
+import { login as apiLogin, getMe } from '../../lib/api'
 
 export default function Login() {
   const router = useRouter()
@@ -17,24 +16,19 @@ export default function Login() {
     setErro('')
     setLoading(true)
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password: senha })
-
-    if (error) {
-      setErro('E-mail ou senha inválidos.')
-      setLoading(false)
-      return
-    }
-
     try {
-      const res = await fetch(`${API_URL}/auth/me`, {
-        headers: { Authorization: `Bearer ${data.session.access_token}` },
-      })
-      const profile = await res.json()
+      // Login centralizado no backend (anon client isolado + rate limit).
+      const { access_token, refresh_token } = await apiLogin(email, senha)
+      // Hidrata a sessão no client do Supabase: o resto do app continua
+      // lendo o token via supabase.auth.getSession().
+      await supabase.auth.setSession({ access_token, refresh_token })
+
+      const profile = await getMe(access_token)
       router.replace(profile.tipo === 'aluno' ? '/' : '/admin')
     } catch {
-      router.replace('/')
+      setErro('E-mail ou senha inválidos.')
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   return (

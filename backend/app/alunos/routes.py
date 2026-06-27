@@ -1,18 +1,17 @@
 import re
-from datetime import date
-from flask import Blueprint, request, jsonify, g
-from ..supabase_client import supabase
+from flask import Blueprint, request, jsonify, g, current_app
+from ..supabase_client import supabase, get_user_client
 from ..auth.middleware import require_auth, require_role
+from ..schemas import (
+    AlunoCreateSchema,
+    AlunoUpdateSchema,
+    AlunoStatusSchema,
+    VincularPlanoAlunoSchema,
+)
+from ..validation import validate_body
+from ..errors import email_ja_cadastrado
 
 alunos_bp = Blueprint("alunos", __name__, url_prefix="/alunos")
-
-
-# ── Helpers ──────────────────────────────────────────────────────────────────
-
-def _validar_cpf(cpf: str) -> str | None:
-    """Remove formatação e valida que tem 11 dígitos. Retorna CPF limpo ou None."""
-    cpf = re.sub(r"\D", "", cpf)
-    return cpf if len(cpf) == 11 else None
 
 
 # ── Alunos ────────────────────────────────────────────────────────────────────
@@ -25,7 +24,7 @@ def listar():
 
     query = supabase.table("alunos").select("*, profiles(nome, telefone)")
 
-    if status:
+    if status in ("ativo", "inativo", "inadimplente"):
         query = query.eq("status", status)
     if cpf:
         cpf_limpo = re.sub(r"\D", "", cpf)
@@ -37,73 +36,71 @@ def listar():
 
 @alunos_bp.post("")
 @require_role("admin", "recepcionista")
-def criar():
-    data = request.get_json(silent=True) or {}
-
-    for campo in ("nome", "email", "senha", "cpf"):
-        if not data.get(campo):
-            return jsonify({"error": f"Campo '{campo}' é obrigatório"}), 400
-
-    cpf = _validar_cpf(data["cpf"])
-    if not cpf:
-        return jsonify({"error": "CPF inválido — informe 11 dígitos"}), 400
-
+@validate_body(AlunoCreateSchema)
+def criar(payload: AlunoCreateSchema):
     # 1. Cria usuário no Supabase Auth (trigger cria o profile automaticamente)
     try:
         user_resp = supabase.auth.admin.create_user({
-            "email": data["email"],
-            "password": data["senha"],
+            "email": payload.email,
+            "password": payload.senha,
             "email_confirm": True,
-            "user_metadata": {"nome": data["nome"], "tipo": "aluno"},
+            "user_metadata": {"nome": payload.nome, "tipo": "aluno"},
         })
         user_id = user_resp.user.id
     except Exception as e:
-        return jsonify({"error": "Erro ao criar usuário", "detail": str(e)}), 400
+        current_app.logger.exception("Falha ao criar usuário no Supabase Auth")
+        msg = "E-mail já cadastrado" if email_ja_cadastrado(e) else "Não foi possível criar o usuário"
+        return jsonify({"error": msg}), 400
 
     # 2. Cria registro do aluno vinculado ao profile
     try:
         aluno_resp = supabase.table("alunos").insert({
             "profile_id": user_id,
-            "cpf": cpf,
-            "data_nascimento": data.get("data_nascimento"),
-            "endereco": data.get("endereco"),
-            "frequencia_habilitada": data.get("frequencia_habilitada", False),
+            "cpf": payload.cpf,
+            "data_nascimento": payload.data_nascimento.isoformat() if payload.data_nascimento else None,
+            "endereco": payload.endereco,
+            "status": payload.status,
+            "frequencia_habilitada": payload.frequencia_habilitada,
         }).execute()
         return jsonify(aluno_resp.data[0]), 201
-    except Exception as e:
+    except Exception:
         # Rollback: remove o usuário criado se o aluno falhar
         supabase.auth.admin.delete_user(user_id)
-        return jsonify({"error": "Erro ao salvar aluno", "detail": str(e)}), 400
+        current_app.logger.exception("Falha ao salvar aluno; usuário do Auth revertido")
+        return jsonify({"error": "Não foi possível salvar o aluno"}), 400
 
 
 @alunos_bp.get("/<uuid:aluno_id>")
 @require_auth
 def buscar(aluno_id):
-    # Instrutor só vê alunos dos seus planos (RLS garante no banco)
+    # Cliente sob a identidade do usuário: a RLS decide se ele pode ver este
+    # aluno (admin/recepcionista veem todos; instrutor só os dos seus planos;
+    # aluno só a si mesmo). Mitiga BOLA/IDOR — antes a service_role devolvia
+    # qualquer aluno para qualquer autenticado.
+    db = get_user_client(g.access_token)
     result = (
-        supabase.table("alunos")
+        db.table("alunos")
         .select("*, profiles(nome, telefone), aluno_planos(id, status, data_inicio, data_fim, planos(nome, valor))")
         .eq("id", str(aluno_id))
-        .single()
+        .maybe_single()
         .execute()
     )
-    if not result.data:
+    if not result or not result.data:
         return jsonify({"error": "Aluno não encontrado"}), 404
     return jsonify(result.data)
 
 
 @alunos_bp.put("/<uuid:aluno_id>")
 @require_role("admin", "recepcionista")
-def atualizar(aluno_id):
-    data = request.get_json(silent=True) or {}
-    campos_permitidos = {"cpf", "data_nascimento", "endereco", "frequencia_habilitada"}
-    update = {k: v for k, v in data.items() if k in campos_permitidos}
+@validate_body(AlunoUpdateSchema)
+def atualizar(aluno_id, payload: AlunoUpdateSchema):
+    update = payload.model_dump(exclude_unset=True)
 
-    if "cpf" in update:
-        cpf = _validar_cpf(update["cpf"])
-        if not cpf:
-            return jsonify({"error": "CPF inválido"}), 400
-        update["cpf"] = cpf
+    # cpf não pode ser apagado (NOT NULL/UNIQUE no banco)
+    if update.get("cpf") is None:
+        update.pop("cpf", None)
+    if update.get("data_nascimento") is not None:
+        update["data_nascimento"] = update["data_nascimento"].isoformat()
 
     if not update:
         return jsonify({"error": "Nenhum campo válido para atualizar"}), 400
@@ -121,16 +118,11 @@ def atualizar(aluno_id):
 
 @alunos_bp.patch("/<uuid:aluno_id>/status")
 @require_role("admin", "recepcionista")
-def atualizar_status(aluno_id):
-    data = request.get_json(silent=True) or {}
-    novo_status = data.get("status")
-
-    if novo_status not in ("ativo", "inativo", "inadimplente"):
-        return jsonify({"error": "Status inválido"}), 400
-
+@validate_body(AlunoStatusSchema)
+def atualizar_status(aluno_id, payload: AlunoStatusSchema):
     result = (
         supabase.table("alunos")
-        .update({"status": novo_status})
+        .update({"status": payload.status})
         .eq("id", str(aluno_id))
         .execute()
     )
@@ -144,8 +136,10 @@ def atualizar_status(aluno_id):
 @alunos_bp.get("/<uuid:aluno_id>/planos")
 @require_auth
 def listar_planos(aluno_id):
+    # RLS por identidade: admin/recepcionista veem todos; aluno só os próprios.
+    db = get_user_client(g.access_token)
     result = (
-        supabase.table("aluno_planos")
+        db.table("aluno_planos")
         .select("*, planos(nome, valor, duracao_dias)")
         .eq("aluno_id", str(aluno_id))
         .execute()
@@ -155,42 +149,33 @@ def listar_planos(aluno_id):
 
 @alunos_bp.post("/<uuid:aluno_id>/planos")
 @require_role("admin", "recepcionista")
-def vincular_plano(aluno_id):
-    data = request.get_json(silent=True) or {}
-
-    for campo in ("plano_id", "data_inicio"):
-        if not data.get(campo):
-            return jsonify({"error": f"Campo '{campo}' é obrigatório"}), 400
-
+@validate_body(VincularPlanoAlunoSchema)
+def vincular_plano(aluno_id, payload: VincularPlanoAlunoSchema):
     # Busca o valor do plano para gerar a primeira mensalidade
     plano = (
         supabase.table("planos")
         .select("valor")
-        .eq("id", data["plano_id"])
+        .eq("id", str(payload.plano_id))
         .single()
         .execute()
     )
     if not plano.data:
         return jsonify({"error": "Plano não encontrado"}), 404
 
-    vínculo = supabase.table("aluno_planos").insert({
+    vinculo = supabase.table("aluno_planos").insert({
         "aluno_id": str(aluno_id),
-        "plano_id": data["plano_id"],
-        "data_inicio": data["data_inicio"],
-        "data_fim": data.get("data_fim"),
+        "plano_id": str(payload.plano_id),
+        "data_inicio": payload.data_inicio.isoformat(),
+        "data_fim": payload.data_fim.isoformat() if payload.data_fim else None,
     }).execute()
 
-    aluno_plano_id = vínculo.data[0]["id"]
+    aluno_plano_id = vinculo.data[0]["id"]
 
     # Gera a primeira mensalidade com vencimento na data de início
     from ..mensalidades.jobs import criar_mensalidade
-    criar_mensalidade(
-        aluno_plano_id,
-        plano.data["valor"],
-        date.fromisoformat(data["data_inicio"]),
-    )
+    criar_mensalidade(aluno_plano_id, plano.data["valor"], payload.data_inicio)
 
-    return jsonify(vínculo.data[0]), 201
+    return jsonify(vinculo.data[0]), 201
 
 
 @alunos_bp.delete("/<uuid:aluno_id>/planos/<uuid:aluno_plano_id>")

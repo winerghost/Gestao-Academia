@@ -1,29 +1,32 @@
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, jsonify, g
 from gotrue.errors import AuthApiError
-from ..supabase_client import supabase
-from .middleware import require_auth
+from ..supabase_client import supabase, get_anon_client
+from ..extensions import limiter
+from ..config import Config
+from ..schemas import LoginSchema
+from ..validation import validate_body
+from .middleware import require_auth, _get_token
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 
 
 @auth_bp.post("/login")
-def login():
-    data = request.get_json(silent=True) or {}
-    email = data.get("email", "").strip()
-    password = data.get("password", "")
-
-    if not email or not password:
-        return jsonify({"error": "E-mail e senha são obrigatórios"}), 400
-
+@limiter.limit(lambda: Config.RATELIMIT_LOGIN)
+@validate_body(LoginSchema)
+def login(payload: LoginSchema):
+    # Cliente anon isolado por requisição: a sessão fica contida aqui e
+    # nunca contamina o cliente global de service role.
+    client = get_anon_client()
     try:
-        response = supabase.auth.sign_in_with_password(
-            {"email": email, "password": password}
+        response = client.auth.sign_in_with_password(
+            {"email": payload.email, "password": payload.password}
         )
-    except AuthApiError as e:
+    except AuthApiError:
         return jsonify({"error": "Credenciais inválidas"}), 401
 
     return jsonify({
         "access_token": response.session.access_token,
+        "refresh_token": response.session.refresh_token,
         "user": {
             "id": response.user.id,
             "email": response.user.email,
@@ -34,9 +37,12 @@ def login():
 @auth_bp.post("/logout")
 @require_auth
 def logout():
-    token = request.headers.get("Authorization", "")[7:]
+    token = _get_token()
+    # Revoga a sessão deste token via Admin API (header service role, sem
+    # gravar estado no cliente global). scope="local" invalida apenas esta
+    # sessão; as demais sessões do usuário continuam válidas.
     try:
-        supabase.auth.sign_out()
+        supabase.auth.admin.sign_out(token, scope="local")
     except AuthApiError:
         pass
     return jsonify({"message": "Logout realizado com sucesso"})

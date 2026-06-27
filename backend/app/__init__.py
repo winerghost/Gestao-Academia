@@ -1,6 +1,8 @@
-from flask import Flask
+import os
+from flask import Flask, jsonify
 from flask_cors import CORS
 from .config import Config
+from .extensions import limiter
 from .auth import auth_bp
 from .alunos import alunos_bp
 from .instrutores import instrutores_bp
@@ -16,7 +18,38 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
 
-    CORS(app, origins=["http://localhost:3000"], expose_headers=["Content-Disposition"])
+    # Em testes (pytest) não falhamos por env ausente nem ativamos o rate
+    # limit / scheduler — mantém a suíte determinística e offline.
+    testing = bool(os.environ.get("PYTEST_CURRENT_TEST")) or app.config.get("TESTING")
+
+    # Fail-fast: sem as chaves do Supabase o backend não sobe (evita rodar
+    # meio-configurado e vazar erros estranhos em runtime).
+    faltando = Config.missing_required()
+    if faltando and not testing:
+        raise RuntimeError(
+            "Variáveis de ambiente obrigatórias ausentes: " + ", ".join(faltando)
+        )
+
+    # CORS restritivo: apenas as origens explícitas do Next.js (sem wildcard).
+    # Em produção, defina ALLOWED_ORIGINS no .env.
+    CORS(
+        app,
+        origins=Config.ALLOWED_ORIGINS,
+        supports_credentials=True,
+        expose_headers=["Content-Disposition"],
+        allow_headers=["Authorization", "Content-Type"],
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    )
+
+    # Rate limiting (limites e storage vêm de app.config / RATELIMIT_*).
+    app.config["RATELIMIT_ENABLED"] = not testing
+    limiter.init_app(app)
+
+    @app.errorhandler(429)
+    def _rate_limit_excedido(_e):
+        return jsonify({
+            "error": "Muitas requisições em pouco tempo. Aguarde e tente de novo."
+        }), 429
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(alunos_bp)
@@ -28,7 +61,7 @@ def create_app():
     app.register_blueprint(portal_bp)
     app.register_blueprint(avaliacoes_bp)
 
-    if not app.config.get("TESTING"):
+    if not testing:
         from .mensalidades.jobs import iniciar_scheduler
         iniciar_scheduler()
 

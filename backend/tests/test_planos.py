@@ -28,7 +28,8 @@ def test_criar_plano_campos_obrigatorios(client):
     with patch("app.auth.middleware.supabase") as mock_auth:
         _mock_auth(mock_auth)
         res = client.post("/planos", json={"nome": "Musculação"}, headers=_auth_headers())
-        assert res.status_code == 400
+        assert res.status_code == 422
+        assert "valor" in res.get_json()["fields"]
 
 
 def test_criar_plano_valor_invalido(client):
@@ -37,7 +38,8 @@ def test_criar_plano_valor_invalido(client):
         res = client.post("/planos", json={
             "nome": "Musculação", "valor": -50, "duracao_dias": 30
         }, headers=_auth_headers())
-        assert res.status_code == 400
+        assert res.status_code == 422
+        assert "valor" in res.get_json()["fields"]
 
 
 def test_criar_plano_sucesso(client):

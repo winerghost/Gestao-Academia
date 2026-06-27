@@ -1,6 +1,8 @@
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, jsonify, g
 from ..supabase_client import supabase
 from ..auth.middleware import require_auth, require_role
+from ..schemas import PlanoCreateSchema, PlanoUpdateSchema
+from ..validation import validate_body
 
 planos_bp = Blueprint("planos", __name__, url_prefix="/planos")
 
@@ -20,24 +22,13 @@ def listar():
 
 @planos_bp.post("")
 @require_role("admin")
-def criar():
-    data = request.get_json(silent=True) or {}
-
-    for campo in ("nome", "valor", "duracao_dias"):
-        if data.get(campo) is None:
-            return jsonify({"error": f"Campo '{campo}' é obrigatório"}), 400
-
-    if float(data["valor"]) <= 0:
-        return jsonify({"error": "Valor deve ser maior que zero"}), 400
-
-    if int(data["duracao_dias"]) <= 0:
-        return jsonify({"error": "Duração deve ser maior que zero"}), 400
-
+@validate_body(PlanoCreateSchema)
+def criar(payload: PlanoCreateSchema):
     result = supabase.table("planos").insert({
-        "nome": data["nome"],
-        "descricao": data.get("descricao"),
-        "valor": float(data["valor"]),
-        "duracao_dias": int(data["duracao_dias"]),
+        "nome": payload.nome,
+        "descricao": payload.descricao,
+        "valor": payload.valor,
+        "duracao_dias": payload.duracao_dias,
     }).execute()
 
     return jsonify(result.data[0]), 201
@@ -60,10 +51,9 @@ def buscar(plano_id):
 
 @planos_bp.put("/<uuid:plano_id>")
 @require_role("admin")
-def atualizar(plano_id):
-    data = request.get_json(silent=True) or {}
-    campos_permitidos = {"nome", "descricao", "valor", "duracao_dias"}
-    update = {k: v for k, v in data.items() if k in campos_permitidos}
+@validate_body(PlanoUpdateSchema)
+def atualizar(plano_id, payload: PlanoUpdateSchema):
+    update = payload.model_dump(exclude_unset=True)
 
     if not update:
         return jsonify({"error": "Nenhum campo válido para atualizar"}), 400

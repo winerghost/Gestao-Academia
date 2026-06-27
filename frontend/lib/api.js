@@ -1,14 +1,11 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
 
 async function fetcher(endpoint, token, options = {}) {
-  const res = await fetch(`${API_URL}${endpoint}`, {
-    ...options,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    },
-  })
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) }
+  // Endpoints públicos (ex.: login) chamam sem token.
+  if (token) headers.Authorization = `Bearer ${token}`
+
+  const res = await fetch(`${API_URL}${endpoint}`, { ...options, headers })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
     throw new Error(err.error || `Erro ${res.status}`)
@@ -36,6 +33,9 @@ export async function downloadRelatorio(token, endpoint) {
 }
 
 // Auth
+export const login = (email, password) =>
+  fetcher('/auth/login', null, { method: 'POST', body: JSON.stringify({ email, password }) })
+export const logout = (token) => fetcher('/auth/logout', token, { method: 'POST' })
 export const getMe = (token) => fetcher('/auth/me', token)
 
 // Portal do aluno

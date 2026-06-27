@@ -1,6 +1,6 @@
 from datetime import date
-from flask import Blueprint, request, jsonify
-from ..supabase_client import supabase
+from flask import Blueprint, request, jsonify, g
+from ..supabase_client import supabase, get_user_client
 from ..auth.middleware import require_auth, require_role
 
 mensalidades_bp = Blueprint("mensalidades", __name__, url_prefix="/mensalidades")
@@ -34,14 +34,17 @@ def listar():
 @mensalidades_bp.get("/<uuid:mensalidade_id>")
 @require_auth
 def buscar(mensalidade_id):
+    # RLS por identidade: admin/recepcionista veem todas; aluno só as suas.
+    # Antes a service_role devolvia qualquer mensalidade a qualquer autenticado.
+    db = get_user_client(g.access_token)
     result = (
-        supabase.table("mensalidades")
+        db.table("mensalidades")
         .select("*, aluno_planos(aluno_id, planos(nome, valor))")
         .eq("id", str(mensalidade_id))
-        .single()
+        .maybe_single()
         .execute()
     )
-    if not result.data:
+    if not result or not result.data:
         return jsonify({"error": "Mensalidade não encontrada"}), 404
     return jsonify(result.data)
 

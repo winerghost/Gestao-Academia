@@ -32,6 +32,9 @@ def require_auth(f):
 
         g.user_id = user.id
         g.user_tipo = profile["tipo"]
+        # Guarda o JWT da requisição para handlers que precisam consultar o
+        # banco sob a identidade do usuário (RLS) via get_user_client().
+        g.access_token = token
         return f(*args, **kwargs)
 
     return decorated

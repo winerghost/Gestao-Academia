@@ -1,11 +1,16 @@
 'use client'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabase'
+import { logout as apiLogout } from '../lib/api'
 
 export default function NavBar({ nomeAluno }) {
   const router = useRouter()
 
   async function logout() {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) await apiLogout(session.access_token)  // revoga no backend
+    } catch { /* segue para o signOut local mesmo se a revogação falhar */ }
     await supabase.auth.signOut()
     router.replace('/login')
   }

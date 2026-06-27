@@ -1,6 +1,13 @@
-from flask import Blueprint, request, jsonify, g
-from ..supabase_client import supabase
+from flask import Blueprint, jsonify, g, current_app
+from ..supabase_client import supabase, get_user_client
 from ..auth.middleware import require_auth, require_role
+from ..schemas import (
+    InstrutorCreateSchema,
+    InstrutorUpdateSchema,
+    VincularPlanoInstrutorSchema,
+)
+from ..validation import validate_body
+from ..errors import email_ja_cadastrado
 
 instrutores_bp = Blueprint("instrutores", __name__, url_prefix="/instrutores")
 
@@ -21,61 +28,64 @@ def listar():
 
 @instrutores_bp.post("")
 @require_role("admin")
-def criar():
-    data = request.get_json(silent=True) or {}
-
-    for campo in ("nome", "email", "senha"):
-        if not data.get(campo):
-            return jsonify({"error": f"Campo '{campo}' é obrigatório"}), 400
-
+@validate_body(InstrutorCreateSchema)
+def criar(payload: InstrutorCreateSchema):
     # 1. Cria usuário no Supabase Auth
     try:
         user_resp = supabase.auth.admin.create_user({
-            "email": data["email"],
-            "password": data["senha"],
+            "email": payload.email,
+            "password": payload.senha,
             "email_confirm": True,
-            "user_metadata": {"nome": data["nome"], "tipo": "instrutor"},
+            "user_metadata": {"nome": payload.nome, "tipo": "instrutor"},
         })
         user_id = user_resp.user.id
     except Exception as e:
-        return jsonify({"error": "Erro ao criar usuário", "detail": str(e)}), 400
+        current_app.logger.exception("Falha ao criar usuário no Supabase Auth")
+        msg = "E-mail já cadastrado" if email_ja_cadastrado(e) else "Não foi possível criar o usuário"
+        return jsonify({"error": msg}), 400
 
     # 2. Cria registro do instrutor
     try:
         inst_resp = supabase.table("instrutores").insert({
             "profile_id": user_id,
-            "especialidade": data.get("especialidade"),
-            "modalidade": data.get("modalidade"),
-            "salario": data.get("salario"),
-            "data_admissao": data.get("data_admissao"),
+            "especialidade": payload.especialidade,
+            "modalidade": payload.modalidade,
+            "salario": payload.salario,
+            "data_admissao": payload.data_admissao.isoformat() if payload.data_admissao else None,
         }).execute()
         return jsonify(inst_resp.data[0]), 201
-    except Exception as e:
+    except Exception:
         supabase.auth.admin.delete_user(user_id)
-        return jsonify({"error": "Erro ao salvar instrutor", "detail": str(e)}), 400
+        current_app.logger.exception("Falha ao salvar instrutor; usuário do Auth revertido")
+        return jsonify({"error": "Não foi possível salvar o instrutor"}), 400
 
 
 @instrutores_bp.get("/<uuid:instrutor_id>")
 @require_auth
 def buscar(instrutor_id):
+    # RLS por identidade: admin/recepcionista veem todos; instrutor só a si
+    # mesmo; aluno não vê nenhum. Antes a service_role expunha salário e dados
+    # de qualquer instrutor para qualquer autenticado (BOLA).
+    db = get_user_client(g.access_token)
     result = (
-        supabase.table("instrutores")
+        db.table("instrutores")
         .select("*, profiles(nome, telefone)")
         .eq("id", str(instrutor_id))
-        .single()
+        .maybe_single()
         .execute()
     )
-    if not result.data:
+    if not result or not result.data:
         return jsonify({"error": "Instrutor não encontrado"}), 404
     return jsonify(result.data)
 
 
 @instrutores_bp.put("/<uuid:instrutor_id>")
 @require_role("admin")
-def atualizar(instrutor_id):
-    data = request.get_json(silent=True) or {}
-    campos_permitidos = {"especialidade", "modalidade", "salario", "data_admissao"}
-    update = {k: v for k, v in data.items() if k in campos_permitidos}
+@validate_body(InstrutorUpdateSchema)
+def atualizar(instrutor_id, payload: InstrutorUpdateSchema):
+    update = payload.model_dump(exclude_unset=True)
+    if update.get("data_admissao") is not None:
+        update["data_admissao"] = update["data_admissao"].isoformat()
 
     if not update:
         return jsonify({"error": "Nenhum campo válido para atualizar"}), 400
@@ -107,15 +117,11 @@ def listar_planos(instrutor_id):
 
 @instrutores_bp.post("/<uuid:instrutor_id>/planos")
 @require_role("admin")
-def vincular_plano(instrutor_id):
-    data = request.get_json(silent=True) or {}
-
-    if not data.get("plano_id"):
-        return jsonify({"error": "Campo 'plano_id' é obrigatório"}), 400
-
+@validate_body(VincularPlanoInstrutorSchema)
+def vincular_plano(instrutor_id, payload: VincularPlanoInstrutorSchema):
     result = supabase.table("instrutor_planos").insert({
         "instrutor_id": str(instrutor_id),
-        "plano_id": data["plano_id"],
+        "plano_id": str(payload.plano_id),
     }).execute()
 
     return jsonify(result.data[0]), 201

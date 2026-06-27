@@ -3,8 +3,7 @@ import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '../../lib/supabase'
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
+import { getMe, logout as apiLogout } from '../../lib/api'
 
 const NAV = [
   { href: '/admin',               label: 'Dashboard',    icon: '⊞',  exact: true },
@@ -28,16 +27,25 @@ export default function AdminLayout({ children }) {
   const [perfil,       setPerfil]       = useState(null)
   const [sidebarOpen,  setSidebarOpen]  = useState(true)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [isMobile,     setIsMobile]     = useState(false)
+
+  useEffect(() => {
+    function checkMobile() {
+      const mobile = window.innerWidth < 768
+      setIsMobile(mobile)
+      if (mobile) setSidebarOpen(false)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
 
   useEffect(() => {
     async function checkAuth() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.replace('/login'); return }
       try {
-        const res = await fetch(`${API_URL}/auth/me`, {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        })
-        const profile = await res.json()
+        const profile = await getMe(session.access_token)
         if (profile.tipo === 'aluno') { router.replace('/'); return }
         setPerfil(profile)
       } catch {
@@ -48,6 +56,10 @@ export default function AdminLayout({ children }) {
   }, [router])
 
   async function logout() {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) await apiLogout(session.access_token)  // revoga no backend
+    } catch { /* segue para o signOut local mesmo se a revogação falhar */ }
     await supabase.auth.signOut()
     router.replace('/login')
   }
@@ -130,13 +142,23 @@ export default function AdminLayout({ children }) {
         <div className="fixed inset-0 z-20" onClick={() => setUserMenuOpen(false)} />
       )}
 
+      {/* Overlay mobile para fechar sidebar */}
+      {isMobile && sidebarOpen && (
+        <div className="fixed inset-0 z-30 bg-black/50" onClick={() => setSidebarOpen(false)} />
+      )}
+
       {/* ── Sidebar ─────────────────────────────────────── */}
       <aside
-        className="fixed top-12 left-0 bottom-0 z-20 flex flex-col overflow-hidden transition-all duration-200"
-        style={{ width: sidebarOpen ? 224 : 64, backgroundColor: '#222d32' }}
+        className="fixed top-12 left-0 bottom-0 flex flex-col overflow-hidden transition-all duration-200"
+        style={{
+          width: isMobile ? 224 : (sidebarOpen ? 224 : 64),
+          backgroundColor: '#222d32',
+          transform: isMobile && !sidebarOpen ? 'translateX(-100%)' : 'translateX(0)',
+          zIndex: isMobile ? 40 : 20,
+        }}
       >
         {/* User panel */}
-        {sidebarOpen && (
+        {(sidebarOpen || isMobile) && (
           <div
             className="flex items-center gap-3 px-4 py-4"
             style={{ backgroundColor: '#1a2226' }}
@@ -164,7 +186,7 @@ export default function AdminLayout({ children }) {
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto py-2">
           {/* Seção */}
-          {sidebarOpen && (
+          {(sidebarOpen || isMobile) && (
             <div
               className="px-4 py-1.5 text-[10px] font-semibold uppercase tracking-widest"
               style={{ color: '#4b6269' }}
@@ -179,14 +201,14 @@ export default function AdminLayout({ children }) {
               <Link
                 key={href}
                 href={href}
-                title={!sidebarOpen ? label : undefined}
+                title={!sidebarOpen && !isMobile ? label : undefined}
                 className="flex items-center h-10 transition-colors duration-150"
                 style={{
                   backgroundColor: active ? '#1e282c' : 'transparent',
                   borderLeft: active ? '3px solid #3c8dbc' : '3px solid transparent',
                   color: active ? '#fff' : '#8aa4af',
-                  paddingLeft: sidebarOpen ? (active ? 13 : 16) : 0,
-                  justifyContent: sidebarOpen ? 'flex-start' : 'center',
+                  paddingLeft: (sidebarOpen || isMobile) ? (active ? 13 : 16) : 0,
+                  justifyContent: (sidebarOpen || isMobile) ? 'flex-start' : 'center',
                 }}
                 onMouseEnter={e => { if (!active) e.currentTarget.style.backgroundColor = '#1e282c' }}
                 onMouseLeave={e => { if (!active) e.currentTarget.style.backgroundColor = 'transparent' }}
@@ -194,7 +216,7 @@ export default function AdminLayout({ children }) {
                 <span className="text-base leading-none" style={{ minWidth: 20, textAlign: 'center' }}>
                   {icon}
                 </span>
-                {sidebarOpen && (
+                {(sidebarOpen || isMobile) && (
                   <span className="ml-3 text-sm font-medium">{label}</span>
                 )}
               </Link>
@@ -203,7 +225,7 @@ export default function AdminLayout({ children }) {
         </nav>
 
         {/* Rodapé sidebar */}
-        {sidebarOpen && (
+        {(sidebarOpen || isMobile) && (
           <div className="px-4 py-3 text-center" style={{ borderTop: '1px solid #1a2226' }}>
             <span className="text-[10px]" style={{ color: '#4b6269' }}>
               GestãoAcademia v1.0
@@ -215,7 +237,7 @@ export default function AdminLayout({ children }) {
       {/* ── Conteúdo ────────────────────────────────────── */}
       <div
         className="transition-all duration-200 flex flex-col min-h-screen pt-12"
-        style={{ marginLeft: sidebarOpen ? 224 : 64 }}
+        style={{ marginLeft: isMobile ? 0 : (sidebarOpen ? 224 : 64) }}
       >
         {/* Content header (breadcrumb) */}
         <div className="px-6 py-3 flex items-center gap-2" style={{ backgroundColor: '#ecf0f5' }}>
