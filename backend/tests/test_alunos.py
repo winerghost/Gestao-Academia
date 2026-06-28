@@ -87,6 +87,7 @@ def test_criar_aluno_cpf_invalido(client):
 
 def test_criar_aluno_sucesso(client):
     with patch("app.alunos.routes.supabase") as mock_supa, \
+         patch("app.alunos.routes.gravatar_existe", return_value=False), \
          patch("app.auth.middleware.supabase") as mock_auth:
         _mock_auth(mock_auth)
 

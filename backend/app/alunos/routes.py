@@ -98,19 +98,19 @@ def criar(payload: AlunoCreateSchema):
         msg = "E-mail já cadastrado" if email_ja_cadastrado(e) else "Não foi possível criar o usuário"
         return jsonify({"error": msg}), 400
 
-    # 2. Define o avatar SOMENTE quando há foto enviada. Aí o Gravatar PREVALECE
-    #    sobre a foto: se o e-mail tiver Gravatar usamos ele, senão subimos a
-    #    foto. Sem foto não consultamos o Gravatar — evita uma chamada de rede em
-    #    todo cadastro. Falha aqui não derruba o cadastro (fica sem foto/iniciais).
+    # 2. Define o avatar: o Gravatar PREVALECE sobre a foto da webcam. Checamos
+    #    o Gravatar em todo cadastro (o e-mail sempre existe), então um aluno com
+    #    Gravatar ganha o avatar automático mesmo sem foto. Se não houver
+    #    Gravatar e houver foto, subimos a foto. Falha aqui não derruba o
+    #    cadastro — o aluno fica sem foto (iniciais).
     avatar_url = None
-    if foto_jpeg:
-        try:
-            if gravatar_existe(payload.email):
-                avatar_url = url_gravatar(payload.email)
-            else:
-                avatar_url = upload_avatar(supabase, user_id, foto_jpeg)
-        except Exception:
-            current_app.logger.exception("Falha ao definir avatar do aluno no cadastro")
+    try:
+        if gravatar_existe(payload.email):
+            avatar_url = url_gravatar(payload.email)
+        elif foto_jpeg:
+            avatar_url = upload_avatar(supabase, user_id, foto_jpeg)
+    except Exception:
+        current_app.logger.exception("Falha ao definir avatar do aluno no cadastro")
 
     # 3. Atualiza o profile (telefone + avatar_url numa só escrita; o trigger
     #    só popula nome e tipo).
