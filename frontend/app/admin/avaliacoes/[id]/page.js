@@ -309,8 +309,8 @@ export default function AvaliacaoDetalhe() {
     DIAMETROS_CAMPOS.forEach(d => { novoForm[d.key] = data[d.key] ?? '' })
     setForm(novoForm)
     // Histórico do mesmo aluno (para gráficos)
-    const hist = await getAvaliacoes(t, { aluno_id: data.aluno_id })
-    setHistorico(hist.reverse()) // ascendente por data
+    const hist = await getAvaliacoes(t, { aluno_id: data.aluno_id, limit: 100 })
+    setHistorico((hist.data ?? []).reverse()) // ascendente por data
   }
 
   useEffect(() => {

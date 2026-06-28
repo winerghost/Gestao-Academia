@@ -79,14 +79,21 @@ def _get_profile(user_id):
     # select("*") em vez de colunas nomeadas para tolerar a coluna `ativo`
     # ainda não migrada: sem ela, `.get("ativo", True)` trata como ativo e o
     # app não quebra antes de rodar a migration 007.
+    #
+    # maybe_single() em vez de single(): retorna None quando não encontra registro
+    # em vez de lançar PGRST116. Garante 401 limpo para usuários sem profile
+    # (ex.: criados manualmente no Supabase sem passar pelo trigger).
     def _query():
         result = (
             supabase.table("profiles")
             .select("*")
             .eq("id", user_id)
-            .single()
+            .maybe_single()
             .execute()
         )
-        return result.data if result.data else None
+        return result.data if result and result.data else None
 
-    return _with_retry(_query)
+    try:
+        return _with_retry(_query)
+    except Exception:
+        return None

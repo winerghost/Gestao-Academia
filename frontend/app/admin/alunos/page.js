@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { useAuth } from '../../../hooks/useAuth'
 import { getAlunos } from '../../../lib/api'
+import Paginacao from '../../../components/Paginacao'
 
 const STATUS_BADGE = {
   ativo: 'bg-green-100 text-green-700',
@@ -17,7 +18,7 @@ const FILTROS = [
   { value: 'inadimplente', label: 'Inadimplentes' },
 ]
 
-const OPCOES_POR_PAGINA = [50, 100, 200]
+const OPCOES_POR_PAGINA = [25, 50, 100, 200]
 
 export default function AlunosPage() {
   const { token } = useAuth()
@@ -27,7 +28,7 @@ export default function AlunosPage() {
   const [status, setStatus] = useState('')
   const [busca, setBusca] = useState('')
   const [buscaDebounced, setBuscaDebounced] = useState('')
-  const [porPagina, setPorPagina] = useState(50)
+  const [porPagina, setPorPagina] = useState(25)
   const [pagina, setPagina] = useState(1)
 
   // Debounce de 400 ms na busca para não chamar o backend a cada tecla
@@ -150,25 +151,9 @@ export default function AlunosPage() {
       {!loading && total > 0 && (
         <div className="flex items-center justify-between flex-wrap gap-3 mt-4">
           <p className="text-sm text-gray-500">
-            Mostrando {inicio + 1}–{Math.min(inicio + porPagina, total)} de {total}
+            Mostrando {inicio + 1}–{Math.min(inicio + porPagina, total)} de {total} aluno(s)
           </p>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPagina(p => Math.max(1, p - 1))}
-              disabled={pagina <= 1}
-              className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">
-              ← Anterior
-            </button>
-            <span className="text-sm text-gray-600">
-              Página {pagina} de {totalPaginas}
-            </span>
-            <button
-              onClick={() => setPagina(p => Math.min(totalPaginas, p + 1))}
-              disabled={pagina >= totalPaginas}
-              className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">
-              Próxima →
-            </button>
-          </div>
+          <Paginacao pagina={pagina} totalPaginas={totalPaginas} onPagina={setPagina} />
         </div>
       )}
     </div>

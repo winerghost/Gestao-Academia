@@ -20,7 +20,7 @@ from ..auth.avatar import (
 
 alunos_bp = Blueprint("alunos", __name__, url_prefix="/alunos")
 
-_LIMITES_VALIDOS = frozenset({50, 100, 200})
+_LIMITES_VALIDOS = frozenset({25, 50, 100, 200})
 
 
 # ── Alunos ────────────────────────────────────────────────────────────────────

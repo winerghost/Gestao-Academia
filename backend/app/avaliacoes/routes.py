@@ -8,8 +8,7 @@ from ..schemas import AvaliacaoCreateSchema, AvaliacaoUpdateSchema
 
 avaliacoes_bp = Blueprint("avaliacoes", __name__, url_prefix="/avaliacoes")
 
-# Teto de itens na listagem — evita devolver a tabela inteira de uma vez
-_LIMITE_LISTAGEM = 200
+_LIMITES_VALIDOS = frozenset({10, 25, 50, 100})
 
 def _calcular_imc(peso_kg, altura_cm):
     try:
@@ -61,9 +60,20 @@ def _alunos_do_instrutor(profile_id: str) -> list:
 @avaliacoes_bp.get("")
 @require_role("admin", "instrutor", "recepcionista")
 def listar():
-    aluno_id   = request.args.get("aluno_id")
+    aluno_id    = request.args.get("aluno_id")
     data_inicio = request.args.get("data_inicio")
-    data_fim   = request.args.get("data_fim")
+    data_fim    = request.args.get("data_fim")
+    busca       = request.args.get("busca", "").strip()[:100]
+
+    try:
+        limit  = int(request.args.get("limit", 25))
+        offset = int(request.args.get("offset", 0))
+    except (ValueError, TypeError):
+        limit, offset = 25, 0
+
+    if limit not in _LIMITES_VALIDOS:
+        limit = 25
+    offset = max(0, offset)
 
     # Datas malformadas viram erro de cast no Postgres (500). Valida antes.
     for rotulo, valor in (("data_inicio", data_inicio), ("data_fim", data_fim)):
@@ -72,25 +82,50 @@ def listar():
                 "error": f"Parâmetro '{rotulo}' deve estar no formato AAAA-MM-DD"
             }), 400
 
+    vazio = {"data": [], "total": 0, "limit": limit, "offset": offset}
+
+    # Busca por nome: resolve os aluno_ids que batem antes de filtrar avaliacoes
+    ids_busca = None
+    if busca:
+        match = (
+            supabase.table("alunos")
+            .select("id, profiles!inner(nome)")
+            .filter("profiles.nome", "ilike", f"%{busca}%")
+            .execute()
+        )
+        ids_busca = {a["id"] for a in (match.data or [])}
+        if not ids_busca:
+            return jsonify(vazio)
+
     query = (
         supabase.table("avaliacoes")
         .select(
             "id, data_avaliacao, peso_kg, altura_cm, imc, gordura_corporal, "
             "massa_magra_kg, aluno_id, instrutor_id, created_at, "
-            "alunos(profiles(nome))"
+            "alunos(profiles(nome))",
+            count="exact",
         )
     )
 
-    # Instrutor só enxerga avaliações dos alunos dos seus planos
+    # Combina filtros de aluno_id, busca por nome e restrição de instrutor
     if g.user_tipo == "instrutor":
-        permitidos = _alunos_do_instrutor(g.user_id)
+        permitidos = set(_alunos_do_instrutor(g.user_id))
         if not permitidos:
-            return jsonify([])
-        if aluno_id and aluno_id not in permitidos:
-            return jsonify([])
-        query = query.in_("aluno_id", [aluno_id] if aluno_id else permitidos)
+            return jsonify(vazio)
+        final_ids = permitidos
+        if aluno_id:
+            final_ids = {aluno_id} & final_ids
+        if ids_busca is not None:
+            final_ids &= ids_busca
+        if not final_ids:
+            return jsonify(vazio)
+        query = query.in_("aluno_id", list(final_ids))
     elif aluno_id:
+        if ids_busca is not None and aluno_id not in ids_busca:
+            return jsonify(vazio)
         query = query.eq("aluno_id", aluno_id)
+    elif ids_busca is not None:
+        query = query.in_("aluno_id", list(ids_busca))
 
     if data_inicio:
         query = query.gte("data_avaliacao", data_inicio)
@@ -98,11 +133,17 @@ def listar():
         query = query.lte("data_avaliacao", data_fim)
 
     result = (
-        query.order("data_avaliacao", desc=True)
-        .limit(_LIMITE_LISTAGEM)
+        query
+        .order("data_avaliacao", desc=True)
+        .range(offset, offset + limit - 1)
         .execute()
     )
-    return jsonify(result.data)
+    return jsonify({
+        "data":   result.data,
+        "total":  result.count,
+        "limit":  limit,
+        "offset": offset,
+    })
 
 
 @avaliacoes_bp.post("")

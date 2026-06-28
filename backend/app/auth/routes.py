@@ -76,9 +76,11 @@ def me():
         supabase.table("profiles")
         .select("id, nome, tipo, telefone, preferencias, avatar_url, created_at")
         .eq("id", g.user_id)
-        .single()
+        .maybe_single()
         .execute()
     )
+    if not result or not result.data:
+        return jsonify({"error": "Perfil não encontrado"}), 404
     return jsonify(result.data)
 
 

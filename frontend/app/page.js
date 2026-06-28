@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '../hooks/useAuth'
+import { supabase } from '../lib/supabase'
 import {
   getMe,
   getPortalMe,
@@ -112,14 +113,20 @@ export default function Dashboard() {
   const router = useRouter()
   const { token } = useAuth()
 
-  const [aluno,       setAluno]       = useState(null)
+  const [aluno,        setAluno]        = useState(null)
   const [mensalidades, setMensalidades] = useState([])
   const [avaliacaoData, setAvaliacaoData] = useState({ avaliacoes: [], proxima_avaliacao: null })
-  const [treino,      setTreino]      = useState([])
-  const [frequencias, setFrequencias] = useState([])
-  const [avisos,      setAvisos]      = useState([])
-  const [loading,     setLoading]     = useState(true)
-  const [erro,        setErro]        = useState(null)
+  const [treino,       setTreino]       = useState([])
+  const [frequencias,  setFrequencias]  = useState([])
+  const [avisos,       setAvisos]       = useState([])
+  const [loading,      setLoading]      = useState(true)
+  const [erro,         setErro]         = useState(null)
+  const [refreshKey,   setRefreshKey]   = useState(0)
+
+  async function sairDaSessao() {
+    await supabase.auth.signOut()
+    router.replace('/login')
+  }
 
   useEffect(() => {
     if (!token) return
@@ -133,13 +140,18 @@ export default function Dashboard() {
 
         const [dadosAluno, dadosMens, dadosAv, dadosTreino, dadosAvisos, dadosFreq] =
           await Promise.all([
-            getPortalMe(token),
-            getPortalMensalidades(token),
+            getPortalMe(token).catch(() => null),
+            getPortalMensalidades(token).catch(() => []),
             getPortalAvaliacoes(token).catch(() => ({ avaliacoes: [], proxima_avaliacao: null })),
             getPortalTreino(token).catch(() => []),
             getPortalAvisos(token).catch(() => []),
             getPortalFrequencias(token).catch(() => []),
           ])
+
+        if (!dadosAluno) {
+          setErro('Cadastro de aluno não encontrado. Entre em contato com a academia.')
+          return
+        }
 
         setAluno(dadosAluno)
         setMensalidades(dadosMens)
@@ -154,7 +166,7 @@ export default function Dashboard() {
       }
     }
     carregar()
-  }, [token, router])
+  }, [token, router, refreshKey])
 
   if (loading) {
     return (
@@ -166,8 +178,26 @@ export default function Dashboard() {
 
   if (erro) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-red-500 bg-red-50 px-6 py-3 rounded-lg border border-red-100">{erro}</p>
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="text-center max-w-sm w-full">
+          <p className="text-red-500 bg-red-50 px-6 py-3 rounded-lg border border-red-100 mb-4">
+            {erro}
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2 justify-center">
+            <button
+              onClick={() => { setErro(null); setLoading(true); setRefreshKey(k => k + 1) }}
+              className="px-4 py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition"
+            >
+              Tentar novamente
+            </button>
+            <button
+              onClick={sairDaSessao}
+              className="px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700 transition"
+            >
+              Sair
+            </button>
+          </div>
+        </div>
       </div>
     )
   }

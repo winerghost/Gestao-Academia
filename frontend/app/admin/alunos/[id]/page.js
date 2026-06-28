@@ -46,7 +46,7 @@ export default function AlunoDetalhe() {
       getAluno(t, id),
       getMensalidades(t, { aluno_id: id }),
       getPlanos(t),
-      getAvaliacoes(t, { aluno_id: id }),
+      getAvaliacoes(t, { aluno_id: id, limit: 100 }),
     ])
     setAluno(a)
     setForm({
@@ -58,7 +58,7 @@ export default function AlunoDetalhe() {
     })
     setMensalidades(m)
     setPlanos(p)
-    setAvaliacoes(av)
+    setAvaliacoes(av.data ?? [])
   }
 
   useEffect(() => {
