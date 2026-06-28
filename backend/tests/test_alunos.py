@@ -30,9 +30,11 @@ def _mock_auth(mock_supa, tipo="admin"):
     user = MagicMock()
     user.id = "user-uuid"
     mock_supa.auth.get_user.return_value = MagicMock(user=user)
-    mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
-        data={"tipo": tipo}
-    )
+    # O middleware (_get_profile) consulta o profile via .maybe_single();
+    # mockamos ambos os caminhos para o tipo ser sempre resolvido.
+    perfil = MagicMock(data={"tipo": tipo})
+    mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = perfil
+    mock_supa.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = perfil
 
 
 # ── Listar alunos ─────────────────────────────────────────────────────────────
@@ -386,3 +388,150 @@ def test_status_invalido(client):
             headers=_auth_headers(),
         )
         assert res.status_code == 422
+
+
+# ── Vínculos aluno ↔ plano: regra anti-duplicidade + gestão ──────────────────
+
+_ALUNO = "00000000-0000-0000-0000-000000000001"
+_VINC = "00000000-0000-0000-0000-000000000002"
+_PLANO = "00000000-0000-0000-0000-000000000009"
+
+
+def test_vincular_plano_duplicado_bloqueia_409(client):
+    """Plano já ativo para o aluno → 409 e nenhuma inserção/mensalidade."""
+    with patch("app.alunos.routes.supabase") as mock_supa, \
+         patch("app.mensalidades.jobs.criar_mensalidade") as mock_cm, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth)
+
+        planos_tbl = MagicMock()
+        planos_tbl.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
+            data={"valor": 99.9}
+        )
+        ap_tbl = MagicMock()
+        ap_tbl.select.return_value.eq.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(
+            data=[{"id": "ap-existente"}]
+        )
+        mock_supa.table.side_effect = lambda n: planos_tbl if n == "planos" else ap_tbl
+
+        res = client.post(
+            f"/alunos/{_ALUNO}/planos",
+            json={"plano_id": _PLANO, "data_inicio": "2026-06-01"},
+            headers=_auth_headers(),
+        )
+        assert res.status_code == 409
+        ap_tbl.insert.assert_not_called()
+        mock_cm.assert_not_called()
+
+
+def test_vincular_plano_novo_sucesso(client):
+    """Sem vínculo ativo do plano → insere e gera a 1ª mensalidade."""
+    with patch("app.alunos.routes.supabase") as mock_supa, \
+         patch("app.mensalidades.jobs.criar_mensalidade") as mock_cm, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth)
+
+        planos_tbl = MagicMock()
+        planos_tbl.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
+            data={"valor": 99.9}
+        )
+        ap_tbl = MagicMock()
+        ap_tbl.select.return_value.eq.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(
+            data=[]
+        )
+        ap_tbl.insert.return_value.execute.return_value = MagicMock(
+            data=[{"id": "novo-ap", "aluno_id": _ALUNO, "plano_id": _PLANO}]
+        )
+        mock_supa.table.side_effect = lambda n: planos_tbl if n == "planos" else ap_tbl
+
+        res = client.post(
+            f"/alunos/{_ALUNO}/planos",
+            json={"plano_id": _PLANO, "data_inicio": "2026-06-01"},
+            headers=_auth_headers(),
+        )
+        assert res.status_code == 201
+        mock_cm.assert_called_once()
+
+
+def test_editar_vinculo_plano(client):
+    """PUT atualiza as datas do vínculo."""
+    with patch("app.alunos.routes.supabase") as mock_supa, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth)
+        ap_tbl = MagicMock()
+        ap_tbl.update.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(
+            data=[{"id": _VINC, "data_fim": "2026-12-31"}]
+        )
+        mock_supa.table.return_value = ap_tbl
+
+        res = client.put(
+            f"/alunos/{_ALUNO}/planos/{_VINC}",
+            json={"data_fim": "2026-12-31"},
+            headers=_auth_headers(),
+        )
+        assert res.status_code == 200
+        assert res.get_json()["data_fim"] == "2026-12-31"
+
+
+def test_cancelar_vinculo_soft(client):
+    """DELETE sem ?permanente → soft-delete (status cancelado)."""
+    with patch("app.alunos.routes.supabase") as mock_supa, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth)
+        ap_tbl = MagicMock()
+        ap_tbl.select.return_value.eq.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
+            data={"id": _VINC}
+        )
+        ap_tbl.update.return_value.eq.return_value.execute.return_value = MagicMock(data=[{}])
+        mock_supa.table.return_value = ap_tbl
+
+        res = client.delete(f"/alunos/{_ALUNO}/planos/{_VINC}", headers=_auth_headers())
+        assert res.status_code == 200
+        assert "cancelado" in res.get_json()["message"]
+        ap_tbl.delete.assert_not_called()
+
+
+def test_excluir_vinculo_bloqueia_com_mensalidade_paga(client):
+    """DELETE ?permanente com mensalidade paga → 409, sem exclusão física."""
+    with patch("app.alunos.routes.supabase") as mock_supa, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth)
+        ap_tbl = MagicMock()
+        ap_tbl.select.return_value.eq.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
+            data={"id": _VINC}
+        )
+        mens_tbl = MagicMock()
+        mens_tbl.select.return_value.eq.return_value.execute.return_value = MagicMock(
+            data=[{"status": "paga"}, {"status": "pendente"}]
+        )
+        mock_supa.table.side_effect = lambda n: mens_tbl if n == "mensalidades" else ap_tbl
+
+        res = client.delete(
+            f"/alunos/{_ALUNO}/planos/{_VINC}?permanente=true", headers=_auth_headers()
+        )
+        assert res.status_code == 409
+        ap_tbl.delete.assert_not_called()
+
+
+def test_excluir_vinculo_sem_paga_sucesso(client):
+    """DELETE ?permanente sem mensalidade paga → exclui (cascade nas não pagas)."""
+    with patch("app.alunos.routes.supabase") as mock_supa, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth)
+        ap_tbl = MagicMock()
+        ap_tbl.select.return_value.eq.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
+            data={"id": _VINC}
+        )
+        ap_tbl.delete.return_value.eq.return_value.execute.return_value = MagicMock(data=[{}])
+        mens_tbl = MagicMock()
+        mens_tbl.select.return_value.eq.return_value.execute.return_value = MagicMock(
+            data=[{"status": "pendente"}, {"status": "atrasada"}]
+        )
+        mock_supa.table.side_effect = lambda n: mens_tbl if n == "mensalidades" else ap_tbl
+
+        res = client.delete(
+            f"/alunos/{_ALUNO}/planos/{_VINC}?permanente=true", headers=_auth_headers()
+        )
+        assert res.status_code == 200
+        assert "excluído" in res.get_json()["message"]
+        ap_tbl.delete.assert_called_once()

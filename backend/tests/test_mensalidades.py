@@ -2,7 +2,11 @@ from datetime import date, timedelta
 from unittest.mock import patch, MagicMock
 import pytest
 from app import create_app
-from app.mensalidades.jobs import job_atualizar_inadimplencia, job_gerar_mensalidades
+from app.mensalidades.jobs import (
+    job_atualizar_inadimplencia,
+    job_gerar_mensalidades,
+    criar_mensalidade,
+)
 
 
 @pytest.fixture
@@ -21,9 +25,11 @@ def _mock_auth(mock_supa, tipo="admin"):
     user = MagicMock()
     user.id = "user-uuid"
     mock_supa.auth.get_user.return_value = MagicMock(user=user)
-    mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
-        data={"tipo": tipo}
-    )
+    # O middleware (_get_profile) consulta o profile via .maybe_single();
+    # mockamos ambos os caminhos para o tipo ser sempre resolvido.
+    perfil = MagicMock(data={"tipo": tipo})
+    mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = perfil
+    mock_supa.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = perfil
 
 
 # ── Cálculo de juros ──────────────────────────────────────────────────────────
@@ -106,3 +112,25 @@ def test_job_gerar_mensalidades_sem_planos_ativos():
         mock_supa.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
 
         job_gerar_mensalidades()  # Não deve lançar exceção
+
+
+# ── Idempotência de criar_mensalidade (não duplica cobrança) ──────────────────
+
+def test_criar_mensalidade_nao_duplica_periodo():
+    """Já existindo mensalidade para (vínculo, vencimento), não insere outra."""
+    with patch("app.mensalidades.jobs.supabase") as mock_supa:
+        mock_supa.table.return_value.select.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(
+            data=[{"id": "mens-existente"}]
+        )
+        criar_mensalidade("ap-uuid", 100.0, date(2026, 6, 1))
+        mock_supa.table.return_value.insert.assert_not_called()
+
+
+def test_criar_mensalidade_insere_quando_inexistente():
+    """Sem mensalidade no período, insere normalmente."""
+    with patch("app.mensalidades.jobs.supabase") as mock_supa:
+        mock_supa.table.return_value.select.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(
+            data=[]
+        )
+        criar_mensalidade("ap-uuid", 100.0, date(2026, 6, 1))
+        mock_supa.table.return_value.insert.assert_called_once()

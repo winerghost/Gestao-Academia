@@ -131,6 +131,16 @@ export const atualizarAluno = (token, id, data) =>
   fetcher(`/alunos/${id}`, token, { method: 'PUT', body: JSON.stringify(data) })
 export const vincularPlanoAluno = (token, alunoId, data) =>
   fetcher(`/alunos/${alunoId}/planos`, token, { method: 'POST', body: JSON.stringify(data) })
+export const getVinculoPlano = (token, alunoId, vinculoId) =>
+  fetcher(`/alunos/${alunoId}/planos/${vinculoId}`, token)
+export const editarPlanoAluno = (token, alunoId, vinculoId, data) =>
+  fetcher(`/alunos/${alunoId}/planos/${vinculoId}`, token, { method: 'PUT', body: JSON.stringify(data) })
+// Cancelar (soft): mantém o histórico. Excluir (permanente): remoção física,
+// barrada no backend se houver mensalidade paga.
+export const cancelarPlanoAluno = (token, alunoId, vinculoId) =>
+  fetcher(`/alunos/${alunoId}/planos/${vinculoId}`, token, { method: 'DELETE' })
+export const excluirPlanoAluno = (token, alunoId, vinculoId) =>
+  fetcher(`/alunos/${alunoId}/planos/${vinculoId}?permanente=true`, token, { method: 'DELETE' })
 
 // Instrutores
 export const getInstrutores = (token) => fetcher('/instrutores', token)

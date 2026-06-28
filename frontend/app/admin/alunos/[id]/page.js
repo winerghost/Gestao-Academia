@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '../../../../hooks/useAuth'
-import { getAluno, atualizarAluno, vincularPlanoAluno, getMensalidades, getPlanos, pagarMensalidade, getAvaliacoes, adminUploadAvatarUsuario, adminRemoverAvatarUsuario } from '../../../../lib/api'
+import { getAluno, atualizarAluno, vincularPlanoAluno, editarPlanoAluno, cancelarPlanoAluno, excluirPlanoAluno, getMensalidades, getPlanos, pagarMensalidade, getAvaliacoes, adminUploadAvatarUsuario, adminRemoverAvatarUsuario } from '../../../../lib/api'
 import { AlunoDetalheSkeleton } from './_skeleton'
 import CapturaFoto from '../_CapturaFoto'
 
@@ -38,6 +38,11 @@ export default function AlunoDetalhe() {
   const [novoPlano, setNovoPlano] = useState({ plano_id: '', data_inicio: '' })
   const [erro, setErro] = useState('')
   const [salvando, setSalvando] = useState(false)
+  // Gestão de um vínculo de plano: id em edição, form da edição e msg da seção.
+  const [planoEditId, setPlanoEditId] = useState(null)
+  const [planoForm, setPlanoForm] = useState({ data_inicio: '', data_fim: '' })
+  const [planoMsg, setPlanoMsg] = useState('')
+  const [planoBusy, setPlanoBusy] = useState(false)
   const [fotoMsg, setFotoMsg] = useState('')
   const [fotoBusy, setFotoBusy] = useState(false)
 
@@ -100,6 +105,52 @@ export default function AlunoDetalhe() {
     setSalvando(false)
   }
 
+  // ── Gestão de um vínculo de plano (editar datas / cancelar / excluir) ──────
+  function iniciarEdicaoPlano(ap) {
+    setPlanoMsg('')
+    setPlanoEditId(ap.id)
+    setPlanoForm({ data_inicio: ap.data_inicio || '', data_fim: ap.data_fim || '' })
+  }
+
+  async function salvarEdicaoPlano(vinculoId) {
+    setPlanoBusy(true)
+    setPlanoMsg('')
+    try {
+      await editarPlanoAluno(token, id, vinculoId, planoForm)
+      setPlanoEditId(null)
+      await carregar(token)
+    } catch (err) {
+      setPlanoMsg(err.message)
+    }
+    setPlanoBusy(false)
+  }
+
+  async function cancelarVinculo(vinculoId) {
+    if (!confirm('Cancelar este plano? O histórico e as mensalidades são preservados.')) return
+    setPlanoBusy(true)
+    setPlanoMsg('')
+    try {
+      await cancelarPlanoAluno(token, id, vinculoId)
+      await carregar(token)
+    } catch (err) {
+      setPlanoMsg(err.message)
+    }
+    setPlanoBusy(false)
+  }
+
+  async function excluirVinculo(vinculoId) {
+    if (!confirm('Excluir DEFINITIVAMENTE este vínculo e suas mensalidades não pagas? Esta ação não pode ser desfeita.')) return
+    setPlanoBusy(true)
+    setPlanoMsg('')
+    try {
+      await excluirPlanoAluno(token, id, vinculoId)
+      await carregar(token)
+    } catch (err) {
+      setPlanoMsg(err.message)
+    }
+    setPlanoBusy(false)
+  }
+
   // Troca/remoção de foto do aluno (admin/recepcionista). O CapturaFoto entrega
   // um data URL (webcam/arquivo) ou null (remover); convertemos para File no upload.
   async function mudarFotoAluno(dataUrl) {
@@ -139,6 +190,11 @@ export default function AlunoDetalhe() {
 
   const profile = aluno.profiles || {}
   const totalPago = mensalidades.filter(m => m.status === 'paga').reduce((s, m) => s + (m.valor_total || 0), 0)
+  // Planos já ativos para este aluno — escondidos do select para evitar a
+  // tentativa de vínculo duplicado (o backend também bloqueia com 409).
+  const planosAtivosIds = new Set(
+    (aluno.aluno_planos || []).filter(ap => ap.status === 'ativo').map(ap => ap.plano_id)
+  )
 
   return (
     <div className="space-y-6">
@@ -232,23 +288,76 @@ export default function AlunoDetalhe() {
           ) : (
             <div className="space-y-2">
               {aluno.aluno_planos.map(ap => (
-                <div key={ap.id} className="flex justify-between items-center py-1">
-                  <div>
-                    <p className="text-sm font-medium text-gray-700">{ap.planos?.nome}</p>
-                    <p className="text-xs text-gray-400">Início: {ap.data_inicio}</p>
-                  </div>
-                  <span className={`text-xs px-2 py-0.5 rounded-full capitalize ${BADGE[ap.status] || 'bg-gray-100 text-gray-500'}`}>
-                    {ap.status}
-                  </span>
+                <div key={ap.id} className="py-2 border-b border-gray-50 last:border-0">
+                  {planoEditId === ap.id ? (
+                    // Edição inline das datas do vínculo
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-gray-700">{ap.planos?.nome}</p>
+                      <div className="flex gap-2">
+                        <div className="flex-1">
+                          <label className="text-[11px] text-gray-500">Início</label>
+                          <input type="date" className={input} value={planoForm.data_inicio}
+                            onChange={e => setPlanoForm(f => ({ ...f, data_inicio: e.target.value }))} />
+                        </div>
+                        <div className="flex-1">
+                          <label className="text-[11px] text-gray-500">Fim (opcional)</label>
+                          <input type="date" className={input} value={planoForm.data_fim}
+                            onChange={e => setPlanoForm(f => ({ ...f, data_fim: e.target.value }))} />
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => salvarEdicaoPlano(ap.id)} disabled={planoBusy}
+                          className="bg-orange-500 hover:bg-orange-600 text-white px-3 py-1 rounded-lg text-xs font-medium transition disabled:opacity-60">
+                          {planoBusy ? 'Salvando...' : 'Salvar'}
+                        </button>
+                        <button onClick={() => setPlanoEditId(null)}
+                          className="border border-gray-200 text-gray-600 px-3 py-1 rounded-lg text-xs font-medium hover:bg-gray-50 transition">
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-700">{ap.planos?.nome}</p>
+                        <p className="text-xs text-gray-400">
+                          Início: {ap.data_inicio}{ap.data_fim ? ` · Fim: ${ap.data_fim}` : ''}
+                          {ap.planos?.valor != null ? ` · R$ ${Number(ap.planos.valor).toFixed(2)}` : ''}
+                        </p>
+                        <div className="flex gap-3 mt-1.5">
+                          {ap.status === 'ativo' && (
+                            <>
+                              <button onClick={() => iniciarEdicaoPlano(ap)} disabled={planoBusy}
+                                className="text-xs text-gray-500 hover:text-gray-700 font-medium disabled:opacity-50">
+                                Editar
+                              </button>
+                              <button onClick={() => cancelarVinculo(ap.id)} disabled={planoBusy}
+                                className="text-xs text-yellow-600 hover:text-yellow-700 font-medium disabled:opacity-50">
+                                Cancelar
+                              </button>
+                            </>
+                          )}
+                          <button onClick={() => excluirVinculo(ap.id)} disabled={planoBusy}
+                            className="text-xs text-red-500 hover:text-red-700 font-medium disabled:opacity-50">
+                            Excluir
+                          </button>
+                        </div>
+                      </div>
+                      <span className={`text-xs px-2 py-0.5 rounded-full capitalize shrink-0 ${BADGE[ap.status] || 'bg-gray-100 text-gray-500'}`}>
+                        {ap.status}
+                      </span>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           )}
+          {planoMsg && <p className="text-xs text-red-500">{planoMsg}</p>}
           <div className="border-t pt-3 space-y-2">
             <p className="text-xs font-semibold text-gray-500">Vincular novo plano</p>
             <select className={input} value={novoPlano.plano_id} onChange={e => setNovoPlano(p => ({ ...p, plano_id: e.target.value }))}>
               <option value="">Selecione um plano...</option>
-              {planos.filter(p => p.ativo !== false).map(p => (
+              {planos.filter(p => p.ativo !== false && !planosAtivosIds.has(p.id)).map(p => (
                 <option key={p.id} value={p.id}>{p.nome} — R$ {Number(p.valor).toFixed(2)}</option>
               ))}
             </select>

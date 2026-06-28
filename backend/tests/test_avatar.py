@@ -24,9 +24,9 @@ def _mock_auth(mock_supa, tipo="admin", ativo=True):
     user = MagicMock()
     user.id = "user-uuid"
     mock_supa.auth.get_user.return_value = MagicMock(user=user)
-    mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
-        data={"tipo": tipo, "ativo": ativo}
-    )
+    perfil = MagicMock(data={"tipo": tipo, "ativo": ativo})
+    mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = perfil
+    mock_supa.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = perfil
 
 
 def _png_bytes(size=(40, 20), color=(200, 30, 30)):

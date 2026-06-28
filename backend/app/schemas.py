@@ -179,6 +179,17 @@ class VincularPlanoAlunoSchema(StrictModel):
     data_fim: OptDate = None
 
 
+class AlunoPlanoUpdateSchema(StrictModel):
+    """Edição de um vínculo aluno↔plano já existente.
+
+    O `plano_id` NÃO é editável (trocar de plano = cancelar e criar outro
+    vínculo, para preservar a rastreabilidade das mensalidades). Permite ajustar
+    as datas e o status (incl. cancelar via status='cancelado')."""
+    data_inicio: OptDate = None
+    data_fim: OptDate = None
+    status: Optional[Literal["ativo", "cancelado", "encerrado"]] = None
+
+
 class VincularPlanoInstrutorSchema(StrictModel):
     plano_id: UUID
 

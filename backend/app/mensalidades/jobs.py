@@ -6,11 +6,30 @@ from ..supabase_client import supabase
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def criar_mensalidade(aluno_plano_id: str, valor: float, data_vencimento: date):
+    """Cria a mensalidade do vínculo para o vencimento dado, de forma idempotente.
+
+    Nunca gera cobrança duplicada para o mesmo (vínculo, vencimento): checamos a
+    existência antes de inserir. A garantia DEFINITIVA é o índice único de banco
+    `uq_mensalidades_ap_vcto` (migration 011) — esta checagem evita o erro e o
+    custo de uma inserção que o banco recusaria.
+    """
+    venc = data_vencimento.isoformat()
+    existe = (
+        supabase.table("mensalidades")
+        .select("id")
+        .eq("aluno_plano_id", aluno_plano_id)
+        .eq("data_vencimento", venc)
+        .limit(1)
+        .execute()
+    )
+    if existe.data:
+        return  # já há cobrança para este período — não duplica
+
     supabase.table("mensalidades").insert({
         "aluno_plano_id": aluno_plano_id,
         "valor": valor,
         "juros": 0,
-        "data_vencimento": data_vencimento.isoformat(),
+        "data_vencimento": venc,
         "status": "pendente",
     }).execute()
 

@@ -23,9 +23,9 @@ def _mock_auth(mock_supa, tipo="admin"):
     user = MagicMock()
     user.id = "user-uuid"
     mock_supa.auth.get_user.return_value = MagicMock(user=user)
-    mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
-        data={"tipo": tipo}
-    )
+    perfil = MagicMock(data={"tipo": tipo})
+    mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = perfil
+    mock_supa.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = perfil
 
 
 FAKE_AVALIACAO = {
@@ -68,9 +68,11 @@ def test_deletar_sem_token(client):
 # ── Listar ────────────────────────────────────────────────────────────────────
 
 def _mock_listagem(mock_supa, data):
-    """Configura a cadeia select().order().limit().execute()."""
+    """Configura a cadeia select().order().range().execute() (resposta paginada)."""
     (mock_supa.table.return_value.select.return_value
-        .order.return_value.limit.return_value.execute.return_value) = MagicMock(data=data)
+        .order.return_value.range.return_value.execute.return_value) = MagicMock(
+            data=data, count=len(data)
+        )
 
 
 def test_listar_como_admin(client):
@@ -81,7 +83,9 @@ def test_listar_como_admin(client):
 
         res = client.get("/avaliacoes", headers=_auth_headers())
         assert res.status_code == 200
-        assert isinstance(res.get_json(), list)
+        body = res.get_json()
+        assert isinstance(body["data"], list)
+        assert body["total"] == 1
 
 
 def test_listar_como_recepcionista(client):
@@ -109,7 +113,7 @@ def test_listar_instrutor_sem_alunos_retorna_vazio(client):
         _mock_auth(mock_auth, tipo="instrutor")
         res = client.get("/avaliacoes", headers=_auth_headers())
         assert res.status_code == 200
-        assert res.get_json() == []
+        assert res.get_json()["data"] == []
 
 
 def test_listar_instrutor_filtra_seus_alunos(client):
@@ -119,8 +123,8 @@ def test_listar_instrutor_filtra_seus_alunos(client):
         _mock_auth(mock_auth, tipo="instrutor")
 
         in_chain = (mock_supa.table.return_value.select.return_value
-                    .in_.return_value.order.return_value.limit.return_value)
-        in_chain.execute.return_value = MagicMock(data=[FAKE_AVALIACAO])
+                    .in_.return_value.order.return_value.range.return_value)
+        in_chain.execute.return_value = MagicMock(data=[FAKE_AVALIACAO], count=1)
 
         res = client.get("/avaliacoes", headers=_auth_headers())
         assert res.status_code == 200
@@ -139,7 +143,7 @@ def test_listar_instrutor_aluno_id_fora_do_escopo(client):
         _mock_auth(mock_auth, tipo="instrutor")
         res = client.get("/avaliacoes?aluno_id=aluno-99", headers=_auth_headers())
         assert res.status_code == 200
-        assert res.get_json() == []
+        assert res.get_json()["data"] == []
 
 
 # ── Criar ─────────────────────────────────────────────────────────────────────
