@@ -1,36 +1,15 @@
 import io
-from datetime import date
 from xml.sax.saxutils import escape as xml_escape
 from flask import Blueprint, request, jsonify, send_file, g, current_app
 from ..supabase_client import supabase
 from ..auth.middleware import require_auth, require_role
+from ..validation import data_iso_valida, validate_body
+from ..schemas import AvaliacaoCreateSchema, AvaliacaoUpdateSchema
 
 avaliacoes_bp = Blueprint("avaliacoes", __name__, url_prefix="/avaliacoes")
 
 # Teto de itens na listagem — evita devolver a tabela inteira de uma vez
 _LIMITE_LISTAGEM = 200
-
-# Diâmetros ósseos (modelo "Mapeamento Corporal"), em cm.
-_CAMPOS_DIAMETROS = {
-    "diam_biacromial", "diam_torax_transverso", "diam_torax_ap",
-    "diam_biepicondilo_umeral", "diam_biestiloide", "diam_crista_iliaca",
-    "diam_bitrocanterica", "diam_biepicondilo_femural", "diam_bimaleolar",
-}
-
-_CAMPOS_NUMERICOS = {
-    "peso_kg", "altura_cm", "gordura_corporal", "massa_magra_kg",
-    "circ_cintura", "circ_quadril", "circ_braco", "circ_coxa", "circ_peito",
-    *_CAMPOS_DIAMETROS,
-}
-
-_CAMPOS_PERMITIDOS = {
-    "aluno_id", "instrutor_id", "data_avaliacao",
-    "peso_kg", "altura_cm", "gordura_corporal", "massa_magra_kg",
-    "circ_cintura", "circ_quadril", "circ_braco", "circ_coxa", "circ_peito",
-    "pressao_arterial", "observacoes",
-    *_CAMPOS_DIAMETROS,
-}
-
 
 def _calcular_imc(peso_kg, altura_cm):
     try:
@@ -40,27 +19,6 @@ def _calcular_imc(peso_kg, altura_cm):
     except (TypeError, ValueError, ZeroDivisionError):
         pass
     return None
-
-
-def _converter_numericos(payload: dict) -> dict | tuple:
-    for campo in _CAMPOS_NUMERICOS:
-        if campo in payload and payload[campo] not in (None, ""):
-            try:
-                payload[campo] = float(payload[campo])
-            except (TypeError, ValueError):
-                return None, f"Valor inválido para '{campo}'"
-        elif campo in payload and payload[campo] in (None, ""):
-            payload[campo] = None
-    return payload, None
-
-
-def _data_valida(valor) -> bool:
-    """True se 'valor' é uma data ISO (YYYY-MM-DD) válida."""
-    try:
-        date.fromisoformat(str(valor))
-        return True
-    except (TypeError, ValueError):
-        return False
 
 
 def _alunos_do_instrutor(profile_id: str) -> list:
@@ -107,6 +65,13 @@ def listar():
     data_inicio = request.args.get("data_inicio")
     data_fim   = request.args.get("data_fim")
 
+    # Datas malformadas viram erro de cast no Postgres (500). Valida antes.
+    for rotulo, valor in (("data_inicio", data_inicio), ("data_fim", data_fim)):
+        if valor and not data_iso_valida(valor):
+            return jsonify({
+                "error": f"Parâmetro '{rotulo}' deve estar no formato AAAA-MM-DD"
+            }), 400
+
     query = (
         supabase.table("avaliacoes")
         .select(
@@ -142,20 +107,14 @@ def listar():
 
 @avaliacoes_bp.post("")
 @require_role("admin", "instrutor")
-def criar():
-    data = request.get_json(silent=True) or {}
-
-    if not data.get("aluno_id"):
-        return jsonify({"error": "Campo 'aluno_id' é obrigatório"}), 400
-    if not data.get("data_avaliacao"):
-        return jsonify({"error": "Campo 'data_avaliacao' é obrigatório"}), 400
-    if not _data_valida(data["data_avaliacao"]):
-        return jsonify({"error": "Campo 'data_avaliacao' deve estar no formato AAAA-MM-DD"}), 400
+@validate_body(AvaliacaoCreateSchema)
+def criar(payload: AvaliacaoCreateSchema):
+    aluno_id = str(payload.aluno_id)
 
     aluno = (
         supabase.table("alunos")
         .select("id")
-        .eq("id", data["aluno_id"])
+        .eq("id", aluno_id)
         .maybe_single()
         .execute()
     )
@@ -163,29 +122,28 @@ def criar():
         return jsonify({"error": "Aluno não encontrado"}), 404
 
     # Instrutor só cria avaliação para alunos dos seus planos
-    if g.user_tipo == "instrutor" and data["aluno_id"] not in _alunos_do_instrutor(g.user_id):
+    if g.user_tipo == "instrutor" and aluno_id not in _alunos_do_instrutor(g.user_id):
         return jsonify({"error": "Acesso negado a este aluno"}), 403
 
-    payload = {k: v for k, v in data.items() if k in _CAMPOS_PERMITIDOS and v not in (None, "")}
-    payload, err = _converter_numericos(payload)
-    if err:
-        return jsonify({"error": err}), 400
+    # mode="json" serializa UUID/date como string; exclude_none descarta os
+    # campos não preenchidos (no cadastro o frontend só envia os preenchidos).
+    dados = payload.model_dump(mode="json", exclude_none=True)
 
     # Autoria não vem do cliente: instrutor que cria é o responsável.
     # Admin pode atribuir explicitamente (instrutor_id no corpo).
     if g.user_tipo == "instrutor":
-        payload["instrutor_id"] = g.user_id
+        dados["instrutor_id"] = g.user_id
 
-    imc = _calcular_imc(payload.get("peso_kg"), payload.get("altura_cm"))
+    imc = _calcular_imc(dados.get("peso_kg"), dados.get("altura_cm"))
     if imc:
-        payload["imc"] = imc
+        dados["imc"] = imc
 
     try:
-        result = supabase.table("avaliacoes").insert(payload).execute()
+        result = supabase.table("avaliacoes").insert(dados).execute()
         return jsonify(result.data[0]), 201
-    except Exception as e:
+    except Exception:  # noqa: BLE001 — detalhe vai para o log, não para o cliente
         current_app.logger.exception("Falha ao salvar avaliação")
-        return jsonify({"error": "Não foi possível salvar a avaliação", "detalhe": str(e)}), 400
+        return jsonify({"error": "Não foi possível salvar a avaliação"}), 400
 
 
 @avaliacoes_bp.get("/<uuid:avaliacao_id>")
@@ -223,24 +181,21 @@ def buscar(avaliacao_id):
 
 @avaliacoes_bp.put("/<uuid:avaliacao_id>")
 @require_role("admin", "instrutor")
-def atualizar(avaliacao_id):
-    data = request.get_json(silent=True) or {}
+@validate_body(AvaliacaoUpdateSchema)
+def atualizar(avaliacao_id, payload: AvaliacaoUpdateSchema):
+    # exclude_unset: só os campos realmente enviados entram no UPDATE (campos
+    # vazios viram None pelos validators e, exceto data_avaliacao, limpam a coluna).
+    update = payload.model_dump(mode="json", exclude_unset=True)
 
-    campos_editaveis = _CAMPOS_PERMITIDOS - {"aluno_id"}
-    # Instrutor não reassocia a autoria (instrutor_id) de uma avaliação
+    # data_avaliacao é NOT NULL: não permitimos apagá-la (se vier vazia → None).
+    if update.get("data_avaliacao") is None:
+        update.pop("data_avaliacao", None)
+    # Instrutor não reassocia a autoria (instrutor_id) de uma avaliação.
     if g.user_tipo == "instrutor":
-        campos_editaveis = campos_editaveis - {"instrutor_id"}
-    update = {k: v for k, v in data.items() if k in campos_editaveis}
+        update.pop("instrutor_id", None)
 
     if not update:
         return jsonify({"error": "Nenhum campo válido para atualizar"}), 400
-
-    if "data_avaliacao" in update and not _data_valida(update["data_avaliacao"]):
-        return jsonify({"error": "Campo 'data_avaliacao' deve estar no formato AAAA-MM-DD"}), 400
-
-    update, err = _converter_numericos(update)
-    if err:
-        return jsonify({"error": err}), 400
 
     # Estado atual da avaliação (para ownership do instrutor e recálculo de IMC)
     atual = (

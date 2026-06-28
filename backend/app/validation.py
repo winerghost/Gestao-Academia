@@ -1,8 +1,34 @@
-"""Decorator de validação de corpo de requisição com Pydantic."""
+"""Decorator de validação de corpo de requisição com Pydantic.
+
+Inclui também validadores leves para *query params* (mês e datas), usados nas
+listagens/relatórios: um valor malformado vindo da URL não pode chegar ao
+PostgREST e virar um 500 (que ainda vazaria detalhes do banco).
+"""
+import re
+from datetime import date
 from functools import wraps
 
 from flask import jsonify, request
 from pydantic import BaseModel, ValidationError
+
+# "AAAA-MM" com mês entre 01 e 12.
+_ANO_MES_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+
+
+def mes_valido(mes: str | None) -> bool:
+    """True se `mes` está no formato AAAA-MM (ex.: '2026-06')."""
+    return bool(mes) and bool(_ANO_MES_RE.match(mes))
+
+
+def data_iso_valida(valor: str | None) -> bool:
+    """True se `valor` é uma data ISO válida (AAAA-MM-DD)."""
+    if not valor:
+        return False
+    try:
+        date.fromisoformat(valor)
+        return True
+    except (ValueError, TypeError):
+        return False
 
 
 def _formatar_erros(exc: ValidationError) -> dict:

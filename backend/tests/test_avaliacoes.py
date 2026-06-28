@@ -11,6 +11,10 @@ def client():
         yield c
 
 
+UUID_A = "00000000-0000-0000-0000-00000000000a"
+UUID_B = "00000000-0000-0000-0000-00000000000b"
+
+
 def _auth_headers():
     return {"Authorization": "Bearer token-fake"}
 
@@ -146,18 +150,18 @@ def test_criar_sem_aluno_id(client):
         res = client.post("/avaliacoes",
                           json={"data_avaliacao": "2026-06-25"},
                           headers=_auth_headers())
-        assert res.status_code == 400
-        assert "aluno_id" in res.get_json()["error"]
+        assert res.status_code == 422
+        assert "aluno_id" in res.get_json()["fields"]
 
 
 def test_criar_sem_data(client):
     with patch("app.auth.middleware.supabase") as mock_auth:
         _mock_auth(mock_auth)
         res = client.post("/avaliacoes",
-                          json={"aluno_id": "aluno-uuid"},
+                          json={"aluno_id": UUID_A},
                           headers=_auth_headers())
-        assert res.status_code == 400
-        assert "data_avaliacao" in res.get_json()["error"]
+        assert res.status_code == 422
+        assert "data_avaliacao" in res.get_json()["fields"]
 
 
 def test_criar_aluno_inexistente(client):
@@ -186,7 +190,7 @@ def test_criar_sucesso(client):
         )
 
         res = client.post("/avaliacoes", json={
-            "aluno_id": "aluno-uuid-000-0000-0000-000000000001",
+            "aluno_id": UUID_A,
             "data_avaliacao": "2026-06-25",
             "peso_kg": 75.0,
             "altura_cm": 175.0,
@@ -207,7 +211,7 @@ def test_criar_todos_campos_incluindo_instrutor(client):
         )
 
         res = client.post("/avaliacoes", json={
-            "aluno_id": "aluno-uuid-000-0000-0000-000000000001",
+            "aluno_id": UUID_A,
             "instrutor_id": "00000000-0000-0000-0000-000000000002",
             "data_avaliacao": "2026-06-25",
             "peso_kg": 75.0,
@@ -238,9 +242,9 @@ def test_criar_insert_falha_retorna_400(client):
         )
 
         res = client.post("/avaliacoes", json={
-            "aluno_id": "aluno-uuid-000-0000-0000-000000000001",
+            "aluno_id": UUID_A,
             "data_avaliacao": "2026-06-25",
-            "instrutor_id": "uuid-instrutor-invalido",
+            "instrutor_id": UUID_B,
         }, headers=_auth_headers())
         assert res.status_code == 400
         assert "avaliação" in res.get_json()["error"].lower()
@@ -250,11 +254,11 @@ def test_criar_data_invalida(client):
     with patch("app.auth.middleware.supabase") as mock_auth:
         _mock_auth(mock_auth)
         res = client.post("/avaliacoes", json={
-            "aluno_id": "aluno-uuid",
+            "aluno_id": UUID_A,
             "data_avaliacao": "25/06/2026",  # formato errado
         }, headers=_auth_headers())
-        assert res.status_code == 400
-        assert "data_avaliacao" in res.get_json()["error"]
+        assert res.status_code == 422
+        assert "data_avaliacao" in res.get_json()["fields"]
 
 
 def test_criar_instrutor_aluno_fora_do_escopo_negado(client):
@@ -266,7 +270,7 @@ def test_criar_instrutor_aluno_fora_do_escopo_negado(client):
             data={"id": "aluno-x"}
         )
         res = client.post("/avaliacoes", json={
-            "aluno_id": "aluno-x",
+            "aluno_id": UUID_A,
             "data_avaliacao": "2026-06-25",
         }, headers=_auth_headers())
         assert res.status_code == 403
@@ -275,11 +279,11 @@ def test_criar_instrutor_aluno_fora_do_escopo_negado(client):
 def test_criar_instrutor_forca_autoria(client):
     # instrutor_id enviado pelo cliente é ignorado: usa o id do instrutor logado
     with patch("app.avaliacoes.routes.supabase") as mock_supa, \
-         patch("app.avaliacoes.routes._alunos_do_instrutor", return_value=["aluno-x"]), \
+         patch("app.avaliacoes.routes._alunos_do_instrutor", return_value=[UUID_A]), \
          patch("app.auth.middleware.supabase") as mock_auth:
         _mock_auth(mock_auth, tipo="instrutor")
         mock_supa.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
-            data={"id": "aluno-x"}
+            data={"id": UUID_A}
         )
         captured = {}
 
@@ -292,9 +296,9 @@ def test_criar_instrutor_forca_autoria(client):
         mock_supa.table.return_value.insert.side_effect = fake_insert
 
         res = client.post("/avaliacoes", json={
-            "aluno_id": "aluno-x",
+            "aluno_id": UUID_A,
             "data_avaliacao": "2026-06-25",
-            "instrutor_id": "instrutor-falsificado",
+            "instrutor_id": UUID_B,  # tentativa de forjar autoria
         }, headers=_auth_headers())
         assert res.status_code == 201
         assert captured["payload"]["instrutor_id"] == "user-uuid"  # g.user_id
@@ -381,10 +385,23 @@ def test_atualizar_sem_campos(client):
         _mock_auth(mock_auth)
         res = client.put(
             "/avaliacoes/00000000-0000-0000-0000-000000000001",
-            json={"campo_inexistente": 1},
+            json={},
             headers=_auth_headers(),
         )
         assert res.status_code == 400
+
+
+def test_atualizar_campo_desconhecido_422(client):
+    """Campo fora do schema é rejeitado (extra='forbid'), não ignorado em silêncio."""
+    with patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth)
+        res = client.put(
+            "/avaliacoes/00000000-0000-0000-0000-000000000001",
+            json={"campo_inexistente": 1},
+            headers=_auth_headers(),
+        )
+        assert res.status_code == 422
+        assert "campo_inexistente" in res.get_json()["fields"]
 
 
 def test_atualizar_recalcula_imc(client):
@@ -423,8 +440,8 @@ def test_atualizar_valor_numerico_invalido(client):
             json={"peso_kg": "abc"},
             headers=_auth_headers(),
         )
-        assert res.status_code == 400
-        assert "peso_kg" in res.get_json()["error"]
+        assert res.status_code == 422
+        assert "peso_kg" in res.get_json()["fields"]
 
 
 def test_atualizar_inexistente(client):

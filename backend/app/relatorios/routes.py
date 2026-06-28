@@ -3,6 +3,7 @@ from calendar import monthrange
 from flask import Blueprint, request, send_file, jsonify
 from ..supabase_client import supabase
 from ..auth.middleware import require_role
+from ..validation import mes_valido
 from .pdf import gerar_pdf
 from .excel import gerar_excel
 
@@ -97,6 +98,10 @@ def relatorio_financeiro():
     erro = _validar_formato(formato)
     if erro:
         return erro
+
+    # Mês malformado quebraria o int(mes[:4]) em _intervalo_mes (500). Valida antes.
+    if mes is not None and not mes_valido(mes):
+        return jsonify({"error": "Parâmetro 'mes' deve estar no formato AAAA-MM"}), 400
 
     inicio, fim = _intervalo_mes(mes)
     mensalidades = (

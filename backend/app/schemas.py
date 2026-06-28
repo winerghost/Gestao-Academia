@@ -32,6 +32,8 @@ def _empty_to_none(v):
 OptStr = Annotated[Optional[str], BeforeValidator(_empty_to_none)]
 OptDate = Annotated[Optional[date], BeforeValidator(_empty_to_none)]
 OptFloat = Annotated[Optional[float], BeforeValidator(_empty_to_none)]
+# UUID opcional que aceita "" (input vazio do frontend) como ausência (None).
+OptUUID = Annotated[Optional[UUID], BeforeValidator(_empty_to_none)]
 
 
 class StrictModel(BaseModel):
@@ -214,3 +216,48 @@ class AcademiaConfigSchema(StrictModel):
     notif_lembrete_ativo: Optional[bool] = None
     notif_dias_antes: Annotated[Optional[int], Field(ge=0, le=30)] = None
     notif_atraso_ativo: Optional[bool] = None
+
+
+# ── Avaliações físicas ─────────────────────────────────────────────────────────
+
+class _AvaliacaoMedidas(StrictModel):
+    """Campos de medida (todos opcionais), comuns à criação e à edição.
+
+    As faixas espelham os CHECKs do banco e barram valores negativos/absurdos
+    já na borda — assim o Postgres não recusa lá na frente (500 + vazamento).
+    `imc` não entra: é calculado no backend, nunca recebido do cliente.
+    """
+    peso_kg:          Annotated[OptFloat, Field(gt=0, le=600)] = None
+    altura_cm:        Annotated[OptFloat, Field(gt=0, le=300)] = None
+    gordura_corporal: Annotated[OptFloat, Field(ge=0, le=100)] = None
+    massa_magra_kg:   Annotated[OptFloat, Field(ge=0, le=600)] = None
+    circ_cintura:     Annotated[OptFloat, Field(ge=0, le=300)] = None
+    circ_quadril:     Annotated[OptFloat, Field(ge=0, le=300)] = None
+    circ_braco:       Annotated[OptFloat, Field(ge=0, le=300)] = None
+    circ_coxa:        Annotated[OptFloat, Field(ge=0, le=300)] = None
+    circ_peito:       Annotated[OptFloat, Field(ge=0, le=300)] = None
+    # Diâmetros ósseos (modelo "Mapeamento Corporal"), em cm.
+    diam_biacromial:           Annotated[OptFloat, Field(ge=0, le=100)] = None
+    diam_torax_transverso:     Annotated[OptFloat, Field(ge=0, le=100)] = None
+    diam_torax_ap:             Annotated[OptFloat, Field(ge=0, le=100)] = None
+    diam_biepicondilo_umeral:  Annotated[OptFloat, Field(ge=0, le=100)] = None
+    diam_biestiloide:          Annotated[OptFloat, Field(ge=0, le=100)] = None
+    diam_crista_iliaca:        Annotated[OptFloat, Field(ge=0, le=100)] = None
+    diam_bitrocanterica:       Annotated[OptFloat, Field(ge=0, le=100)] = None
+    diam_biepicondilo_femural: Annotated[OptFloat, Field(ge=0, le=100)] = None
+    diam_bimaleolar:           Annotated[OptFloat, Field(ge=0, le=100)] = None
+    pressao_arterial: Annotated[OptStr, Field(max_length=20)] = None
+    observacoes:      Annotated[OptStr, Field(max_length=2000)] = None
+
+
+class AvaliacaoCreateSchema(_AvaliacaoMedidas):
+    aluno_id: UUID
+    data_avaliacao: date
+    # Autoria: instrutor que cria é forçado no backend; admin pode atribuir.
+    instrutor_id: OptUUID = None
+
+
+class AvaliacaoUpdateSchema(_AvaliacaoMedidas):
+    # Na edição tudo é opcional; aluno_id não é editável (não está aqui).
+    data_avaliacao: OptDate = None
+    instrutor_id: OptUUID = None

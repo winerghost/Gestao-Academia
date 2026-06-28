@@ -1,5 +1,5 @@
 import os
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 from .config import Config
 from .extensions import limiter
@@ -51,6 +51,15 @@ def create_app():
     app.config["RATELIMIT_ENABLED"] = not testing
     limiter.init_app(app)
 
+    # Aviso operacional: com "memory://" o limite NÃO é compartilhado entre
+    # workers/instâncias — o controle de brute force no login fica enfraquecido.
+    # Em produção, defina RATELIMIT_STORAGE_URI=redis://... (ver config.py).
+    if not testing and str(Config.RATELIMIT_STORAGE_URI).startswith("memory://"):
+        app.logger.warning(
+            "Rate limit usando 'memory://' — não compartilhado entre workers. "
+            "Defina RATELIMIT_STORAGE_URI (ex.: redis://...) em produção."
+        )
+
     @app.errorhandler(413)
     def _payload_grande(_e):
         return jsonify({
@@ -66,7 +75,31 @@ def create_app():
     @app.errorhandler(500)
     def _erro_interno(e):
         app.logger.exception("Erro interno não tratado")
-        return jsonify({"error": "Erro interno do servidor", "detalhe": str(e)}), 500
+        # O texto cru da exceção pode revelar schema/erros do PostgREST. Só
+        # expomos esse detalhe em modo debug (dev); em produção, mensagem genérica.
+        corpo = {"error": "Erro interno do servidor"}
+        if app.debug:
+            corpo["detalhe"] = str(e)
+        return jsonify(corpo), 500
+
+    @app.after_request
+    def _cabecalhos_seguranca(resp):
+        # Defesa em profundidade nas respostas da API (JSON e downloads):
+        # - nosniff: impede o navegador de "adivinhar" o content-type.
+        # - DENY/frame-ancestors: a API nunca deve ser embutida em <iframe>.
+        # - CSP restritiva: a API não serve HTML executável; trava tudo.
+        # - HSTS só faz sentido sob HTTPS (em http é ignorado pelo navegador).
+        resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+        resp.headers.setdefault("X-Frame-Options", "DENY")
+        resp.headers.setdefault("Referrer-Policy", "no-referrer")
+        resp.headers.setdefault(
+            "Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'"
+        )
+        if request.is_secure:
+            resp.headers.setdefault(
+                "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+            )
+        return resp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(alunos_bp)

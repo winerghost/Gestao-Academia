@@ -1,7 +1,9 @@
+from calendar import monthrange
 from datetime import date
 from flask import Blueprint, request, jsonify, g
 from ..supabase_client import supabase, get_user_client
 from ..auth.middleware import require_auth, require_role
+from ..validation import mes_valido
 
 mensalidades_bp = Blueprint("mensalidades", __name__, url_prefix="/mensalidades")
 
@@ -13,6 +15,12 @@ def listar():
     aluno_id = request.args.get("aluno_id")
     mes = request.args.get("mes")             # formato: 2026-06
 
+    # Valida o mês ANTES de montar o filtro: um valor malformado viraria um
+    # erro de cast de data no Postgres (500 + vazamento). Também usamos o
+    # último dia REAL do mês — "{mes}-31" estouraria em meses de 30 dias/fev.
+    if mes is not None and not mes_valido(mes):
+        return jsonify({"error": "Parâmetro 'mes' deve estar no formato AAAA-MM"}), 400
+
     query = (
         supabase.table("mensalidades")
         .select("*, aluno_planos!inner(aluno_id, planos(nome), alunos(profiles(nome)))")
@@ -21,8 +29,10 @@ def listar():
     if status:
         query = query.eq("status", status)
     if mes:
+        ano, m = int(mes[:4]), int(mes[5:7])
+        ultimo = monthrange(ano, m)[1]
         query = query.gte("data_vencimento", f"{mes}-01").lte(
-            "data_vencimento", f"{mes}-31"
+            "data_vencimento", f"{mes}-{ultimo:02d}"
         )
     if aluno_id:
         query = query.eq("aluno_planos.aluno_id", aluno_id)
