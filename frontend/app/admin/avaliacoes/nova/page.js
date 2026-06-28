@@ -2,7 +2,7 @@
 import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { supabase } from '../../../../lib/supabase'
+import { useAuth } from '../../../../hooks/useAuth'
 import { getAlunos, getInstrutores, criarAvaliacao } from '../../../../lib/api'
 
 const input = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white'
@@ -38,7 +38,7 @@ const VAZIO = {
 function NovaAvaliacaoForm() {
   const router      = useRouter()
   const params      = useSearchParams()
-  const [token,      setToken]      = useState('')
+  const { token }   = useAuth()
   const [alunos,     setAlunos]     = useState([])
   const [instrutores, setInstrutores] = useState([])
   const [form,       setForm]       = useState({ ...VAZIO, aluno_id: params.get('aluno_id') || '' })
@@ -49,17 +49,15 @@ function NovaAvaliacaoForm() {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   useEffect(() => {
+    if (!token) return
     async function init() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.replace('/login'); return }
-      setToken(session.access_token)
-      const [resp, i] = await Promise.all([getAlunos(session.access_token, { limit: 200 }), getInstrutores(session.access_token)])
+      const [resp, i] = await Promise.all([getAlunos(token, { limit: 200 }), getInstrutores(token)])
       setAlunos(resp.data ?? [])
       setInstrutores(i)
       setLoading(false)
     }
     init()
-  }, [router])
+  }, [token])
 
   async function handleSubmit(e) {
     e.preventDefault()

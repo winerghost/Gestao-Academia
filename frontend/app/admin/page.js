@@ -1,8 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../hooks/useAuth'
 import { getDashboardAlunos, getDashboardFinanceiro, getDashboardFrequencia } from '../../lib/api'
 
 function KPI({ titulo, valor, sub, cor, emoji }) {
@@ -19,7 +18,9 @@ function KPI({ titulo, valor, sub, cor, emoji }) {
 }
 
 export default function AdminDashboard() {
-  const router = useRouter()
+  // useAuth lê o token da sessão local e redireciona para /login se necessário.
+  // Padrão adotado em todas as pages: obter token aqui, passar para lib/api.js.
+  const { token } = useAuth()
   const [alunos, setAlunos] = useState(null)
   const [fin, setFin] = useState(null)
   const [freq, setFreq] = useState(null)
@@ -27,15 +28,14 @@ export default function AdminDashboard() {
   const [erro, setErro] = useState('')
 
   useEffect(() => {
+    // Aguarda o token estar disponível (hook ainda não resolveu a sessão).
+    if (!token) return
     async function carregar() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.replace('/login'); return }
-      const t = session.access_token
       try {
         const [a, f, fr] = await Promise.all([
-          getDashboardAlunos(t),
-          getDashboardFinanceiro(t),
-          getDashboardFrequencia(t),
+          getDashboardAlunos(token),
+          getDashboardFinanceiro(token),
+          getDashboardFrequencia(token),
         ])
         setAlunos(a)
         setFin(f)
@@ -47,7 +47,7 @@ export default function AdminDashboard() {
       }
     }
     carregar()
-  }, [router])
+  }, [token])
 
   const mesRef = fin?.mes_referencia
     ? new Date(fin.mes_referencia + '-02').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })

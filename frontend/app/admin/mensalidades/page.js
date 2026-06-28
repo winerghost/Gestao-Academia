@@ -1,7 +1,6 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
-import { supabase } from '../../../lib/supabase'
+import { useAuth } from '../../../hooks/useAuth'
 import { getMensalidades, pagarMensalidade } from '../../../lib/api'
 
 const BADGE = {
@@ -18,9 +17,8 @@ const FILTROS = [
 ]
 
 export default function MensalidadesPage() {
-  const router = useRouter()
+  const { token } = useAuth()
   const [mensalidades, setMensalidades] = useState([])
-  const [token, setToken] = useState('')
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState('')
   const [mes, setMes] = useState('')
@@ -34,15 +32,13 @@ export default function MensalidadesPage() {
   }, [])
 
   useEffect(() => {
+    if (!token) return
     async function init() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.replace('/login'); return }
-      setToken(session.access_token)
-      await carregar(session.access_token, '', '')
+      await carregar(token, '', '')
       setLoading(false)
     }
     init()
-  }, [router, carregar])
+  }, [token, carregar])
 
   useEffect(() => {
     if (token) carregar(token, status, mes)

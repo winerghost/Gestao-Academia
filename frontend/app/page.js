@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '../lib/supabase'
+import { useAuth } from '../hooks/useAuth'
 import {
   getMe,
   getPortalMe,
@@ -110,6 +110,7 @@ function SecaoMensalidades({ titulo, cor, mensalidades }) {
 
 export default function Dashboard() {
   const router = useRouter()
+  const { token } = useAuth()
 
   const [aluno,       setAluno]       = useState(null)
   const [mensalidades, setMensalidades] = useState([])
@@ -121,18 +122,15 @@ export default function Dashboard() {
   const [erro,        setErro]        = useState(null)
 
   useEffect(() => {
+    if (!token) return
     async function carregar() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.replace('/login'); return }
-
       try {
-        const profile = await getMe(session.access_token)
+        const profile = await getMe(token)
         if (profile.tipo !== 'aluno') {
           router.replace('/admin')
           return
         }
 
-        const token = session.access_token
         const [dadosAluno, dadosMens, dadosAv, dadosTreino, dadosAvisos, dadosFreq] =
           await Promise.all([
             getPortalMe(token),
@@ -156,7 +154,7 @@ export default function Dashboard() {
       }
     }
     carregar()
-  }, [router])
+  }, [token, router])
 
   if (loading) {
     return (

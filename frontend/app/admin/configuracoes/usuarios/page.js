@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { supabase } from '../../../../lib/supabase'
+import { useAuth } from '../../../../hooks/useAuth'
 import { getMe, getUsuarios, atualizarTipoUsuario, atualizarStatusUsuario } from '../../../../lib/api'
 
 const COLUNAS = [
@@ -27,8 +27,8 @@ function cargoInfo(tipo) {
 
 export default function UsuariosKanbanPage() {
   const router = useRouter()
+  const { token } = useAuth()
   const [meId, setMeId]         = useState(null)
-  const [token, setToken]       = useState(null)
   const [usuarios, setUsuarios] = useState([])
   const [loading, setLoading]   = useState(true)
   const [erro, setErro]         = useState(null)
@@ -57,22 +57,20 @@ export default function UsuariosKanbanPage() {
   }, [])
 
   useEffect(() => {
+    if (!token) return
     async function init() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.replace('/login'); return }
       try {
-        const me = await getMe(session.access_token)
+        const me = await getMe(token)
         if (me.tipo !== 'admin') { router.replace('/admin'); return }
         setMeId(me.id)
-        setToken(session.access_token)
-        await buscarUsuarios(session.access_token, '')
+        await buscarUsuarios(token, '')
       } catch (e) {
         setErro(e.message)
       }
       setLoading(false)
     }
     init()
-  }, [router, buscarUsuarios])
+  }, [token, router, buscarUsuarios])
 
   // Re-fetch quando a busca mudar (após debounce)
   useEffect(() => {

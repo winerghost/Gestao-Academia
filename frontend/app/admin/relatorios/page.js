@@ -1,7 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { supabase } from '../../../lib/supabase'
+import { useAuth } from '../../../hooks/useAuth'
 import { downloadRelatorio } from '../../../lib/api'
 
 function RelCard({ titulo, descricao, emoji, onDownload, carregando }) {
@@ -31,17 +30,15 @@ function RelCard({ titulo, descricao, emoji, onDownload, carregando }) {
 }
 
 export default function RelatoriosPage() {
-  const router = useRouter()
+  const { token } = useAuth()
   const [loading, setLoading] = useState({})
   const [erro, setErro] = useState('')
 
   async function baixar(endpoint, formato) {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) { router.replace('/login'); return }
     setLoading(l => ({ ...l, [endpoint]: true }))
     setErro('')
     try {
-      await downloadRelatorio(session.access_token, `${endpoint}?formato=${formato}`)
+      await downloadRelatorio(token, `${endpoint}?formato=${formato}`)
     } catch (err) {
       setErro(err.message)
     }

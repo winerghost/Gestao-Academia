@@ -1,8 +1,7 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { supabase } from '../../../lib/supabase'
+import { useAuth } from '../../../hooks/useAuth'
 import { getAlunos } from '../../../lib/api'
 
 const STATUS_BADGE = {
@@ -21,7 +20,7 @@ const FILTROS = [
 const OPCOES_POR_PAGINA = [50, 100, 200]
 
 export default function AlunosPage() {
-  const router = useRouter()
+  const { token } = useAuth()
   const [alunos, setAlunos] = useState([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -41,20 +40,18 @@ export default function AlunosPage() {
   useEffect(() => { setPagina(1) }, [status, buscaDebounced, porPagina])
 
   const carregar = useCallback(async (paginaAtual) => {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) { router.replace('/login'); return }
-
+    if (!token) return
     setLoading(true)
     const offset = (paginaAtual - 1) * porPagina
     const params = { limit: porPagina, offset }
     if (status) params.status = status
     if (buscaDebounced) params.busca = buscaDebounced
 
-    const resp = await getAlunos(session.access_token, params)
+    const resp = await getAlunos(token, params)
     setAlunos(resp.data ?? [])
     setTotal(resp.total ?? 0)
     setLoading(false)
-  }, [router, status, buscaDebounced, porPagina])
+  }, [token, status, buscaDebounced, porPagina])
 
   useEffect(() => { carregar(pagina) }, [carregar, pagina])
 

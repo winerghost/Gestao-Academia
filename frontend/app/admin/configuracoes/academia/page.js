@@ -1,8 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { supabase } from '../../../../lib/supabase'
+import { useAuth } from '../../../../hooks/useAuth'
 import { getConfigAcademia, atualizarConfigAcademia } from '../../../../lib/api'
 
 const input = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2'
@@ -20,8 +19,7 @@ function horarioPadrao() {
 }
 
 export default function AcademiaPage() {
-  const router = useRouter()
-  const [token, setToken] = useState('')
+  const { token } = useAuth()
   const [loading, setLoading] = useState(true)
   const [salvando, setSalvando] = useState(false)
   const [msg, setMsg] = useState({ tipo: '', texto: '' })
@@ -32,12 +30,10 @@ export default function AcademiaPage() {
   )
 
   useEffect(() => {
+    if (!token) return
     async function init() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.replace('/login'); return }
-      setToken(session.access_token)
       try {
-        const c = await getConfigAcademia(session.access_token)
+        const c = await getConfigAcademia(token)
         setDados({
           nome: c.nome || '', cnpj: c.cnpj || '', telefone: c.telefone || '',
           email: c.email || '', endereco: c.endereco || '',
@@ -55,7 +51,7 @@ export default function AcademiaPage() {
       setLoading(false)
     }
     init()
-  }, [router])
+  }, [token])
 
   function setDia(dia, campo, valor) {
     setHorarios(h => ({ ...h, [dia]: { ...h[dia], [campo]: valor } }))

@@ -1,8 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { supabase } from '../../../lib/supabase'
+import { useAuth } from '../../../hooks/useAuth'
 import { getAvaliacoes, getAlunos } from '../../../lib/api'
 
 function imcClasse(imc) {
@@ -15,8 +14,7 @@ function imcClasse(imc) {
 }
 
 export default function AvaliacoesPage() {
-  const router = useRouter()
-  const [token,      setToken]      = useState('')
+  const { token } = useAuth()
   const [avaliacoes, setAvaliacoes] = useState([])
   const [alunos,     setAlunos]     = useState([])
   const [filtroAluno, setFiltroAluno] = useState('')
@@ -30,14 +28,12 @@ export default function AvaliacoesPage() {
   }
 
   useEffect(() => {
+    if (!token) return
     async function init() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.replace('/login'); return }
-      setToken(session.access_token)
       try {
         const [, resp] = await Promise.all([
-          carregar(session.access_token),
-          getAlunos(session.access_token, { limit: 200 }),
+          carregar(token),
+          getAlunos(token, { limit: 200 }),
         ])
         setAlunos(resp.data ?? [])
       } catch (err) {
@@ -47,7 +43,7 @@ export default function AvaliacoesPage() {
       }
     }
     init()
-  }, [router])
+  }, [token])
 
   async function handleFiltroAluno(e) {
     const val = e.target.value

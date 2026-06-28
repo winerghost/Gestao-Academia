@@ -2,8 +2,8 @@
 import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
-import { supabase } from '../../../../lib/supabase'
-import { getAvaliacao, getAvaliacoes, atualizarAvaliacao, deletarAvaliacao, downloadRelatorio } from '../../../../lib/api'
+import { useAuth } from '../../../../hooks/useAuth'
+import { getMe, getAvaliacao, getAvaliacoes, atualizarAvaliacao, deletarAvaliacao, downloadRelatorio } from '../../../../lib/api'
 import { AvaliacaoDetalheSkeleton } from './_skeleton'
 
 // ── Gráfico SVG nativo ────────────────────────────────────────────────────────
@@ -251,8 +251,6 @@ function BodyMap({ av }) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
-
 function imcInfo(imc) {
   if (!imc) return null
   const v = parseFloat(imc)
@@ -278,7 +276,7 @@ const inputCls = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm foc
 export default function AvaliacaoDetalhe() {
   const router     = useRouter()
   const { id }     = useParams()
-  const [token,    setToken]    = useState('')
+  const { token }  = useAuth()
   const [av,       setAv]       = useState(null)
   const [historico, setHistorico] = useState([])
   const [editando, setEditando] = useState(false)
@@ -316,18 +314,16 @@ export default function AvaliacaoDetalhe() {
   }
 
   useEffect(() => {
+    if (!token) return
     async function init() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.replace('/login'); return }
-      setToken(session.access_token)
-      const res = await fetch(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${session.access_token}` } })
-      const profile = await res.json()
+      // Usa getMe() de lib/api.js — mantém todas as chamadas ao backend centralizadas.
+      const profile = await getMe(token)
       setUserTipo(profile.tipo)
-      await carregar(session.access_token)
+      await carregar(token)
       setLoading(false)
     }
     init()
-  }, [router, id])
+  }, [token, id])
 
   async function salvar() {
     setSalvando(true)

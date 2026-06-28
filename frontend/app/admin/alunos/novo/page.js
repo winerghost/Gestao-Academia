@@ -2,12 +2,13 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { supabase } from '../../../../lib/supabase'
+import { useAuth } from '../../../../hooks/useAuth'
 import { criarAluno } from '../../../../lib/api'
 import CapturaFoto from '../_CapturaFoto'
 
 export default function NovoAluno() {
   const router = useRouter()
+  const { token } = useAuth()
   const [form, setForm] = useState({
     nome: '', email: '', senha: '', cpf: '', telefone: '',
     data_nascimento: '', endereco: '', status: 'ativo',
@@ -22,9 +23,8 @@ export default function NovoAluno() {
     e.preventDefault()
     setErro('')
     setLoading(true)
-    const { data: { session } } = await supabase.auth.getSession()
     try {
-      await criarAluno(session.access_token, form)
+      await criarAluno(token, form)
       router.push('/admin/alunos')
     } catch (err) {
       setErro(err.message)

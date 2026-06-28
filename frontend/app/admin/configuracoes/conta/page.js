@@ -1,8 +1,7 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { supabase } from '../../../../lib/supabase'
+import { useAuth } from '../../../../hooks/useAuth'
 import {
   getMe, atualizarMe, trocarSenha,
   uploadAvatar, removerAvatar, usarGravatar,
@@ -62,8 +61,7 @@ function AvatarPreview({ url, nome }) {
 }
 
 export default function ContaPage() {
-  const router = useRouter()
-  const [token, setToken] = useState('')
+  const { token } = useAuth()
   const [loading, setLoading] = useState(true)
 
   // Perfil
@@ -83,19 +81,17 @@ export default function ContaPage() {
   const [msgSenha, setMsgSenha] = useState({ tipo: '', texto: '' })
 
   useEffect(() => {
+    if (!token) return
     async function init() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.replace('/login'); return }
-      setToken(session.access_token)
       try {
-        const me = await getMe(session.access_token)
+        const me = await getMe(token)
         setPerfil({ nome: me.nome || '', telefone: me.telefone || '' })
         setAvatarUrl(me.avatar_url || null)
       } catch { /* layout trata */ }
       setLoading(false)
     }
     init()
-  }, [router])
+  }, [token])
 
   // Atualiza o estado local e avisa o layout (navbar/sidebar) em tempo real.
   function aplicarAvatar(url) {

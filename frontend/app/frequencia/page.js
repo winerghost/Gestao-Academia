@@ -1,29 +1,26 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../hooks/useAuth'
 import { getPortalFrequencias } from '../../lib/api'
 import NavBar from '../../components/NavBar'
 
 export default function Frequencia() {
-  const router = useRouter()
+  const { token } = useAuth()
   const [frequencias, setFrequencias] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (!token) return
     async function carregar() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.replace('/login'); return }
-
       try {
-        const dados = await getPortalFrequencias(session.access_token)
+        const dados = await getPortalFrequencias(token)
         setFrequencias(dados)
       } finally {
         setLoading(false)
       }
     }
     carregar()
-  }, [router])
+  }, [token])
 
   if (loading) {
     return (

@@ -1,5 +1,14 @@
+// Camada de acesso à API Flask — ÚNICO ponto de saída para chamadas de dados do frontend.
+//
+// Regra arquitetural:
+//   - Toda requisição de dados parte daqui (nunca raw fetch nas pages).
+//   - As pages só lêem o token via supabase.auth.getSession() e o passam
+//     para as funções abaixo; o token é validado/verificado no backend.
+//   - Queries ao banco, RLS e lógica de negócio ficam no Flask/Supabase.
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
 
+// Função interna de fetch: injeta Content-Type e Bearer token automaticamente.
+// Lança Error com a mensagem do backend em caso de resposta não-ok.
 async function fetcher(endpoint, token, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) }
   // Endpoints públicos (ex.: login) chamam sem token.

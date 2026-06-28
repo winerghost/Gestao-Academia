@@ -1,8 +1,8 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { supabase } from '../../../../lib/supabase'
+import { useAuth } from '../../../../hooks/useAuth'
 import { getAluno, atualizarAluno, vincularPlanoAluno, getMensalidades, getPlanos, pagarMensalidade, getAvaliacoes, adminUploadAvatarUsuario, adminRemoverAvatarUsuario } from '../../../../lib/api'
 import { AlunoDetalheSkeleton } from './_skeleton'
 import CapturaFoto from '../_CapturaFoto'
@@ -26,9 +26,8 @@ function Info({ label, value }) {
 }
 
 export default function AlunoDetalhe() {
-  const router = useRouter()
+  const { token } = useAuth()
   const { id } = useParams()
-  const [token, setToken] = useState('')
   const [aluno, setAluno] = useState(null)
   const [mensalidades, setMensalidades] = useState([])
   const [planos, setPlanos] = useState([])
@@ -63,15 +62,13 @@ export default function AlunoDetalhe() {
   }
 
   useEffect(() => {
+    if (!token) return
     async function init() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.replace('/login'); return }
-      setToken(session.access_token)
-      await carregar(session.access_token)
+      await carregar(token)
       setLoading(false)
     }
     init()
-  }, [router, id])
+  }, [token, id])
 
   async function salvarEdicao() {
     setSalvando(true)

@@ -1,14 +1,12 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { supabase } from '../../../lib/supabase'
+import { useAuth } from '../../../hooks/useAuth'
 import { getInstrutores, criarInstrutor } from '../../../lib/api'
 
 export default function InstrutoresPage() {
-  const router = useRouter()
+  const { token } = useAuth()
   const [instrutores, setInstrutores] = useState([])
-  const [token, setToken] = useState('')
   const [loading, setLoading] = useState(true)
   const [mostraForm, setMostraForm] = useState(false)
   const [form, setForm] = useState({ nome: '', email: '', senha: '', especialidade: '', modalidade: '', salario: '', data_admissao: '' })
@@ -21,15 +19,13 @@ export default function InstrutoresPage() {
   }
 
   useEffect(() => {
+    if (!token) return
     async function init() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.replace('/login'); return }
-      setToken(session.access_token)
-      await carregar(session.access_token)
+      await carregar(token)
       setLoading(false)
     }
     init()
-  }, [router])
+  }, [token])
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 

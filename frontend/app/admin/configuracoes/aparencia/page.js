@@ -1,8 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { supabase } from '../../../../lib/supabase'
+import { useAuth } from '../../../../hooks/useAuth'
 import { getMe, atualizarMe } from '../../../../lib/api'
 import { aplicarTema, CORES_DESTAQUE, MODOS, COR_PADRAO } from '../../../../lib/tema'
 
@@ -13,8 +12,7 @@ const TAMANHOS = [
 ]
 
 export default function AparenciaPage() {
-  const router = useRouter()
-  const [token,    setToken]    = useState('')
+  const { token } = useAuth()
   const [loading,  setLoading]  = useState(true)
   const [salvando, setSalvando] = useState(false)
   const [msg,      setMsg]      = useState({ tipo: '', texto: '' })
@@ -25,12 +23,10 @@ export default function AparenciaPage() {
   const [sidebarCompacta, setSidebarCompacta] = useState(false)
 
   useEffect(() => {
+    if (!token) return
     async function init() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.replace('/login'); return }
-      setToken(session.access_token)
       try {
-        const me = await getMe(session.access_token)
+        const me = await getMe(token)
         const p  = me.preferencias || {}
         setCor(p.cor_destaque || COR_PADRAO)
         setFonte(p.tamanho_fonte || 'normal')
@@ -40,7 +36,7 @@ export default function AparenciaPage() {
       setLoading(false)
     }
     init()
-  }, [router])
+  }, [token])
 
   // Pré-visualização ao vivo — só aplica quando a cor for um hex válido.
   useEffect(() => {

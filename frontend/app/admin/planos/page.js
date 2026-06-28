@@ -1,7 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { supabase } from '../../../lib/supabase'
+import { useAuth } from '../../../hooks/useAuth'
 import { getPlanos, criarPlano, atualizarPlano, togglePlanoAtivo } from '../../../lib/api'
 
 const CORES = ['#607d8b', '#00897b', '#f57c00', '#6d4c8a']
@@ -77,9 +76,8 @@ function PlanoCard({ p, index, onEditar, onToggle }) {
 }
 
 export default function PlanosPage() {
-  const router = useRouter()
+  const { token } = useAuth()
   const [planos, setPlanos] = useState([])
-  const [token, setToken] = useState('')
   const [loading, setLoading] = useState(true)
   const [mostraForm, setMostraForm] = useState(false)
   const [editando, setEditando] = useState(null)
@@ -93,15 +91,13 @@ export default function PlanosPage() {
   }
 
   useEffect(() => {
+    if (!token) return
     async function init() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.replace('/login'); return }
-      setToken(session.access_token)
-      await carregar(session.access_token)
+      await carregar(token)
       setLoading(false)
     }
     init()
-  }, [router])
+  }, [token])
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 

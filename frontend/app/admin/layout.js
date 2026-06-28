@@ -87,9 +87,12 @@ export default function AdminLayout({ children }) {
 
   useEffect(() => {
     async function checkAuth() {
+      // getSession() lê o token da memória do SDK — não faz request ao Supabase.
+      // Se não há sessão local, redireciona sem tocar no backend.
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.replace('/login'); return }
       try {
+        // Busca o perfil do usuário autenticado no backend (valida JWT + retorna tipo/preferências).
         const profile = await getMe(session.access_token)
         if (profile.tipo === 'aluno') { router.replace('/'); return }
         setPerfil(profile)
@@ -108,9 +111,11 @@ export default function AdminLayout({ children }) {
 
   async function logout() {
     try {
+      // Revoga o refresh token no servidor (blacklist) antes de limpar a sessão local.
       const { data: { session } } = await supabase.auth.getSession()
       if (session) await apiLogout(session.access_token)
     } catch { /* segue para o signOut local mesmo se a revogação falhar */ }
+    // signOut() limpa apenas a sessão em memória do SDK — não faz nova request ao banco.
     await supabase.auth.signOut()
     router.replace('/login')
   }

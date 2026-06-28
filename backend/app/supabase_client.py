@@ -68,6 +68,10 @@ def _harden_session(client: Client) -> Client:
     client.postgrest.session = new
     return client
 
+# ── Separação de responsabilidades ────────────────────────────────────────────
+# O frontend (Next.js) usa o SDK Supabase APENAS para gerenciar sessão local
+# (getSession / setSession / signOut). Toda lógica de dados passa por aqui.
+#
 # Cliente administrativo (service role) — bypassa RLS.
 # Use APENAS para operações de backend: queries de dados e a Admin API
 # de auth (create_user, sign_out, etc.).

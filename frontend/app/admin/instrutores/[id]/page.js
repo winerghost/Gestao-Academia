@@ -1,15 +1,14 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { supabase } from '../../../../lib/supabase'
+import { useAuth } from '../../../../hooks/useAuth'
 import { getInstrutor, atualizarInstrutor, getInstrutorPlanos, vincularPlanoInstrutor, desvincularPlanoInstrutor, getPlanos } from '../../../../lib/api'
 import { InstrutorDetalheSkeleton } from './_skeleton'
 
 export default function InstrutorDetalhe() {
-  const router = useRouter()
+  const { token } = useAuth()
   const { id } = useParams()
-  const [token, setToken] = useState('')
   const [instrutor, setInstrutor] = useState(null)
   const [planos, setPlanos] = useState([])
   const [todosPlanos, setTodosPlanos] = useState([])
@@ -38,15 +37,13 @@ export default function InstrutorDetalhe() {
   }
 
   useEffect(() => {
+    if (!token) return
     async function init() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.replace('/login'); return }
-      setToken(session.access_token)
-      await carregar(session.access_token)
+      await carregar(token)
       setLoading(false)
     }
     init()
-  }, [router, id])
+  }, [token, id])
 
   async function salvar() {
     setSalvando(true)

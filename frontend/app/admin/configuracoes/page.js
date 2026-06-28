@@ -1,8 +1,7 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { supabase } from '../../../lib/supabase'
+import { useAuth } from '../../../hooks/useAuth'
 import { getMe } from '../../../lib/api'
 
 // Cada área vira um card. `adminOnly` esconde a área de quem não é admin
@@ -51,23 +50,22 @@ const AREAS = [
 ]
 
 export default function ConfiguracoesPage() {
-  const router = useRouter()
+  const { token } = useAuth()
   const [tipo, setTipo] = useState(null)
   const [loading, setLoading] = useState(true)
   const [busca, setBusca] = useState('')
 
   useEffect(() => {
+    if (!token) return
     async function init() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.replace('/login'); return }
       try {
-        const me = await getMe(session.access_token)
+        const me = await getMe(token)
         setTipo(me.tipo)
       } catch { /* o layout já trata sessão inválida */ }
       setLoading(false)
     }
     init()
-  }, [router])
+  }, [token])
 
   const areas = useMemo(() => {
     const termo = busca.trim().toLowerCase()

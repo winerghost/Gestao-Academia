@@ -17,10 +17,14 @@ export default function Login() {
     setLoading(true)
 
     try {
-      // Login centralizado no backend (anon client isolado + rate limit).
+      // 1. Credenciais validadas no Flask (/auth/login) — não diretamente no Supabase.
+      //    Isso garante: client anon isolado por requisição, rate-limit no backend,
+      //    e permite futuramente adicionar lógica extra (ex.: bloqueio de IP).
       const { access_token, refresh_token } = await apiLogin(email, senha)
-      // Hidrata a sessão no client do Supabase: o resto do app continua
-      // lendo o token via supabase.auth.getSession().
+
+      // 2. Hidrata o SDK do Supabase com os tokens retornados pelo backend.
+      //    A partir daqui, qualquer page pode chamar supabase.auth.getSession()
+      //    para obter o token sem fazer nova requisição à rede.
       await supabase.auth.setSession({ access_token, refresh_token })
 
       const profile = await getMe(access_token)
