@@ -84,6 +84,12 @@ export default function PlanosPage() {
   const [form, setForm] = useState({ nome: '', descricao: '', valor: '', duracao_dias: '30' })
   const [erro, setErro] = useState('')
   const [salvando, setSalvando] = useState(false)
+  const [toast, setToast] = useState(null)
+
+  function exibirToast(msg, ok = true) {
+    setToast({ msg, ok })
+    setTimeout(() => setToast(null), 4000)
+  }
 
   async function carregar(t) {
     const data = await getPlanos(t)
@@ -123,8 +129,10 @@ export default function PlanosPage() {
     try {
       if (editando) {
         await atualizarPlano(token, editando, body)
+        exibirToast('Plano atualizado com sucesso.')
       } else {
         await criarPlano(token, body)
+        exibirToast('Plano criado com sucesso.')
       }
       cancelar()
       await carregar(token)
@@ -136,10 +144,12 @@ export default function PlanosPage() {
 
   async function toggle(id) {
     try {
+      const plano = planos.find(p => p.id === id)
       await togglePlanoAtivo(token, id)
       await carregar(token)
+      exibirToast(plano?.ativo !== false ? 'Plano desativado.' : 'Plano ativado.')
     } catch (err) {
-      alert(err.message)
+      exibirToast(err.message, false)
     }
   }
 
@@ -228,6 +238,12 @@ export default function PlanosPage() {
               onToggle={toggle}
             />
           ))}
+        </div>
+      )}
+
+      {toast && (
+        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 px-5 py-3 rounded-xl shadow-lg text-sm font-medium text-white z-50 max-w-sm text-center transition-all ${toast.ok ? 'bg-green-500' : 'bg-red-500'}`}>
+          {toast.msg}
         </div>
       )}
     </div>

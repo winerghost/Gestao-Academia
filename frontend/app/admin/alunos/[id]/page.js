@@ -3,7 +3,11 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '../../../../hooks/useAuth'
-import { getAluno, atualizarAluno, vincularPlanoAluno, editarPlanoAluno, cancelarPlanoAluno, excluirPlanoAluno, getMensalidades, getPlanos, pagarMensalidade, getAvaliacoes, adminUploadAvatarUsuario, adminRemoverAvatarUsuario } from '../../../../lib/api'
+import {
+  getAluno, atualizarAluno, vincularPlanoAluno, editarPlanoAluno,
+  cancelarPlanoAluno, excluirPlanoAluno, getMensalidades, getPlanos,
+  pagarMensalidade, getAvaliacoes, adminUploadAvatarUsuario, adminRemoverAvatarUsuario,
+} from '../../../../lib/api'
 import { AlunoDetalheSkeleton } from './_skeleton'
 import CapturaFoto from '../_CapturaFoto'
 
@@ -38,13 +42,20 @@ export default function AlunoDetalhe() {
   const [novoPlano, setNovoPlano] = useState({ plano_id: '', data_inicio: '' })
   const [erro, setErro] = useState('')
   const [salvando, setSalvando] = useState(false)
-  // Gestão de um vínculo de plano: id em edição, form da edição e msg da seção.
   const [planoEditId, setPlanoEditId] = useState(null)
   const [planoForm, setPlanoForm] = useState({ data_inicio: '', data_fim: '' })
-  const [planoMsg, setPlanoMsg] = useState('')
   const [planoBusy, setPlanoBusy] = useState(false)
-  const [fotoMsg, setFotoMsg] = useState('')
   const [fotoBusy, setFotoBusy] = useState(false)
+  const [toast, setToast] = useState(null)
+  // Confirmação inline para ações destrutivas nos planos
+  const [confirmandoVinculo, setConfirmandoVinculo] = useState(null) // { id, acao: 'cancelar'|'excluir' }
+  // Confirmação inline para pagamento de mensalidade
+  const [confirmandoMensalidadeId, setConfirmandoMensalidadeId] = useState(null)
+
+  function exibirToast(msg, ok = true) {
+    setToast({ msg, ok })
+    setTimeout(() => setToast(null), 4000)
+  }
 
   async function carregar(t) {
     const [a, m, p, av] = await Promise.all([
@@ -82,6 +93,7 @@ export default function AlunoDetalhe() {
       await atualizarAluno(token, id, form)
       await carregar(token)
       setEditando(false)
+      exibirToast('Dados atualizados com sucesso.')
     } catch (err) {
       setErro(err.message)
     }
@@ -99,88 +111,78 @@ export default function AlunoDetalhe() {
       await vincularPlanoAluno(token, id, novoPlano)
       setNovoPlano({ plano_id: '', data_inicio: '' })
       await carregar(token)
+      exibirToast('Plano vinculado com sucesso.')
     } catch (err) {
       setErro(err.message)
     }
     setSalvando(false)
   }
 
-  // ── Gestão de um vínculo de plano (editar datas / cancelar / excluir) ──────
   function iniciarEdicaoPlano(ap) {
-    setPlanoMsg('')
     setPlanoEditId(ap.id)
     setPlanoForm({ data_inicio: ap.data_inicio || '', data_fim: ap.data_fim || '' })
   }
 
   async function salvarEdicaoPlano(vinculoId) {
     setPlanoBusy(true)
-    setPlanoMsg('')
     try {
       await editarPlanoAluno(token, id, vinculoId, planoForm)
       setPlanoEditId(null)
       await carregar(token)
+      exibirToast('Datas do plano atualizadas.')
     } catch (err) {
-      setPlanoMsg(err.message)
+      exibirToast(err.message, false)
     }
     setPlanoBusy(false)
   }
 
-  async function cancelarVinculo(vinculoId) {
-    if (!confirm('Cancelar este plano? O histórico e as mensalidades são preservados.')) return
+  async function confirmarAcaoVinculo() {
+    const { id: vinculoId, acao } = confirmandoVinculo
+    setConfirmandoVinculo(null)
     setPlanoBusy(true)
-    setPlanoMsg('')
     try {
-      await cancelarPlanoAluno(token, id, vinculoId)
+      if (acao === 'cancelar') {
+        await cancelarPlanoAluno(token, id, vinculoId)
+        exibirToast('Plano cancelado. Histórico preservado.')
+      } else {
+        await excluirPlanoAluno(token, id, vinculoId)
+        exibirToast('Vínculo excluído permanentemente.')
+      }
       await carregar(token)
     } catch (err) {
-      setPlanoMsg(err.message)
+      exibirToast(err.message, false)
     }
     setPlanoBusy(false)
   }
 
-  async function excluirVinculo(vinculoId) {
-    if (!confirm('Excluir DEFINITIVAMENTE este vínculo e suas mensalidades não pagas? Esta ação não pode ser desfeita.')) return
-    setPlanoBusy(true)
-    setPlanoMsg('')
+  async function executarPagamento(mensalidadeId) {
+    setConfirmandoMensalidadeId(null)
     try {
-      await excluirPlanoAluno(token, id, vinculoId)
+      await pagarMensalidade(token, mensalidadeId)
+      exibirToast('Pagamento registrado com sucesso.')
       await carregar(token)
     } catch (err) {
-      setPlanoMsg(err.message)
+      exibirToast(err.message, false)
     }
-    setPlanoBusy(false)
   }
 
-  // Troca/remoção de foto do aluno (admin/recepcionista). O CapturaFoto entrega
-  // um data URL (webcam/arquivo) ou null (remover); convertemos para File no upload.
   async function mudarFotoAluno(dataUrl) {
-    setFotoMsg('')
     setFotoBusy(true)
     try {
       if (dataUrl) {
         const blob = await (await fetch(dataUrl)).blob()
         const file = new File([blob], 'foto.jpg', { type: blob.type || 'image/jpeg' })
         await adminUploadAvatarUsuario(token, aluno.profile_id, file)
-        setFotoMsg('Foto atualizada.')
+        exibirToast('Foto atualizada.')
       } else {
         await adminRemoverAvatarUsuario(token, aluno.profile_id)
-        setFotoMsg('Foto removida.')
+        exibirToast('Foto removida.')
       }
       await carregar(token)
     } catch (err) {
-      setFotoMsg(err.message)
+      exibirToast(err.message, false)
     }
     setFotoBusy(false)
-  }
-
-  async function pagar(mensalidadeId) {
-    if (!confirm('Confirmar pagamento desta mensalidade?')) return
-    try {
-      await pagarMensalidade(token, mensalidadeId)
-      await carregar(token)
-    } catch (err) {
-      alert(err.message)
-    }
   }
 
   const input = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white"
@@ -190,8 +192,6 @@ export default function AlunoDetalhe() {
 
   const profile = aluno.profiles || {}
   const totalPago = mensalidades.filter(m => m.status === 'paga').reduce((s, m) => s + (m.valor_total || 0), 0)
-  // Planos já ativos para este aluno — escondidos do select para evitar a
-  // tentativa de vínculo duplicado (o backend também bloqueia com 409).
   const planosAtivosIds = new Set(
     (aluno.aluno_planos || []).filter(ap => ap.status === 'ativo').map(ap => ap.plano_id)
   )
@@ -225,7 +225,6 @@ export default function AlunoDetalhe() {
           onChange={mudarFotoAluno}
           disabled={fotoBusy}
         />
-        {fotoMsg && <p className="text-xs text-gray-500 mt-2">{fotoMsg}</p>}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -290,7 +289,6 @@ export default function AlunoDetalhe() {
               {aluno.aluno_planos.map(ap => (
                 <div key={ap.id} className="py-2 border-b border-gray-50 last:border-0">
                   {planoEditId === ap.id ? (
-                    // Edição inline das datas do vínculo
                     <div className="space-y-2">
                       <p className="text-sm font-medium text-gray-700">{ap.planos?.nome}</p>
                       <div className="flex gap-2">
@@ -324,24 +322,46 @@ export default function AlunoDetalhe() {
                           Início: {ap.data_inicio}{ap.data_fim ? ` · Fim: ${ap.data_fim}` : ''}
                           {ap.planos?.valor != null ? ` · R$ ${Number(ap.planos.valor).toFixed(2)}` : ''}
                         </p>
-                        <div className="flex gap-3 mt-1.5">
-                          {ap.status === 'ativo' && (
-                            <>
-                              <button onClick={() => iniciarEdicaoPlano(ap)} disabled={planoBusy}
-                                className="text-xs text-gray-500 hover:text-gray-700 font-medium disabled:opacity-50">
-                                Editar
-                              </button>
-                              <button onClick={() => cancelarVinculo(ap.id)} disabled={planoBusy}
-                                className="text-xs text-yellow-600 hover:text-yellow-700 font-medium disabled:opacity-50">
-                                Cancelar
-                              </button>
-                            </>
-                          )}
-                          <button onClick={() => excluirVinculo(ap.id)} disabled={planoBusy}
-                            className="text-xs text-red-500 hover:text-red-700 font-medium disabled:opacity-50">
-                            Excluir
-                          </button>
-                        </div>
+
+                        {/* Confirmação inline de cancelar/excluir */}
+                        {confirmandoVinculo?.id === ap.id ? (
+                          <div className="flex items-center gap-2 mt-1.5">
+                            <span className="text-xs text-gray-600">
+                              {confirmandoVinculo.acao === 'cancelar' ? 'Cancelar este plano?' : 'Excluir definitivamente?'}
+                            </span>
+                            <button onClick={confirmarAcaoVinculo} disabled={planoBusy}
+                              className="text-xs font-semibold text-red-600 hover:underline disabled:opacity-50">
+                              Sim
+                            </button>
+                            <button onClick={() => setConfirmandoVinculo(null)}
+                              className="text-xs text-gray-500 hover:underline">
+                              Não
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex gap-3 mt-1.5">
+                            {ap.status === 'ativo' && (
+                              <>
+                                <button onClick={() => iniciarEdicaoPlano(ap)} disabled={planoBusy}
+                                  className="text-xs text-gray-500 hover:text-gray-700 font-medium disabled:opacity-50">
+                                  Editar
+                                </button>
+                                <button
+                                  onClick={() => setConfirmandoVinculo({ id: ap.id, acao: 'cancelar' })}
+                                  disabled={planoBusy}
+                                  className="text-xs text-yellow-600 hover:text-yellow-700 font-medium disabled:opacity-50">
+                                  Cancelar
+                                </button>
+                              </>
+                            )}
+                            <button
+                              onClick={() => setConfirmandoVinculo({ id: ap.id, acao: 'excluir' })}
+                              disabled={planoBusy}
+                              className="text-xs text-red-500 hover:text-red-700 font-medium disabled:opacity-50">
+                              Excluir
+                            </button>
+                          </div>
+                        )}
                       </div>
                       <span className={`text-xs px-2 py-0.5 rounded-full capitalize shrink-0 ${BADGE[ap.status] || 'bg-gray-100 text-gray-500'}`}>
                         {ap.status}
@@ -352,7 +372,7 @@ export default function AlunoDetalhe() {
               ))}
             </div>
           )}
-          {planoMsg && <p className="text-xs text-red-500">{planoMsg}</p>}
+
           <div className="border-t pt-3 space-y-2">
             <p className="text-xs font-semibold text-gray-500">Vincular novo plano</p>
             <select className={input} value={novoPlano.plano_id} onChange={e => setNovoPlano(p => ({ ...p, plano_id: e.target.value }))}>
@@ -455,10 +475,24 @@ export default function AlunoDetalhe() {
                   </td>
                   <td className="px-4 py-3">
                     {m.status !== 'paga' ? (
-                      <button onClick={() => pagar(m.id)}
-                        className="text-orange-500 hover:text-orange-700 text-xs font-medium">
-                        Registrar pagamento
-                      </button>
+                      confirmandoMensalidadeId === m.id ? (
+                        <span className="flex items-center gap-2">
+                          <span className="text-xs text-gray-600">Confirmar?</span>
+                          <button onClick={() => executarPagamento(m.id)}
+                            className="text-xs font-semibold text-green-600 hover:underline">
+                            Sim
+                          </button>
+                          <button onClick={() => setConfirmandoMensalidadeId(null)}
+                            className="text-xs text-gray-500 hover:underline">
+                            Não
+                          </button>
+                        </span>
+                      ) : (
+                        <button onClick={() => setConfirmandoMensalidadeId(m.id)}
+                          className="text-orange-500 hover:text-orange-700 text-xs font-medium">
+                          Registrar pagamento
+                        </button>
+                      )
                     ) : (
                       <span className="text-xs text-gray-400">Pago em {m.data_pagamento}</span>
                     )}
@@ -469,6 +503,13 @@ export default function AlunoDetalhe() {
           </table>
         )}
       </div>
+
+      {/* Toast */}
+      {toast && (
+        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 px-5 py-3 rounded-xl shadow-lg text-sm font-medium text-white z-50 max-w-sm text-center transition-all ${toast.ok ? 'bg-green-500' : 'bg-red-500'}`}>
+          {toast.msg}
+        </div>
+      )}
     </div>
   )
 }

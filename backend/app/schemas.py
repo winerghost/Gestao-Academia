@@ -213,7 +213,39 @@ class UserStatusSchema(StrictModel):
     ativo: bool
 
 
+class ResetSenhaAdminSchema(StrictModel):
+    """Admin redefine a senha de outro usuário sem precisar da senha atual."""
+    senha_nova: Senha
+
+
+class CriarUsuarioSchema(StrictModel):
+    """Criação de usuário do sistema (exceto aluno, que tem fluxo próprio com CPF)."""
+    nome: Nome
+    email: Email
+    senha: Senha
+    tipo: Literal["admin", "recepcionista", "instrutor"]
+    telefone: Annotated[OptStr, Field(max_length=20)] = None
+    foto: OptStr = None  # data URL base64 (opcional)
+
+    @field_validator("foto")
+    @classmethod
+    def _foto(cls, v):
+        if v is None:
+            return None
+        if len(v) > _FOTO_MAX_LEN:
+            raise ValueError("Foto muito grande")
+        if not _FOTO_DATAURL_RE.match(v):
+            raise ValueError("Foto deve ser uma imagem (data URL base64) JPG, PNG ou WEBP")
+        return v
+
+
 # ── Configurações da academia ────────────────────────────────────────────────
+
+class PermissoesRecepcionistaSchema(StrictModel):
+    """Relatórios financeiros acessíveis pela Recepcionista (false por padrão)."""
+    relatorio_financeiro: bool = False
+    relatorio_inadimplencia: bool = False
+
 
 class AcademiaConfigSchema(StrictModel):
     """Atualização da configuração da academia (todos os campos opcionais)."""
@@ -227,6 +259,8 @@ class AcademiaConfigSchema(StrictModel):
     notif_lembrete_ativo: Optional[bool] = None
     notif_dias_antes: Annotated[Optional[int], Field(ge=0, le=30)] = None
     notif_atraso_ativo: Optional[bool] = None
+    # Permissões opcionais concedidas ao cargo Recepcionista.
+    permissoes_recepcionista: Optional[PermissoesRecepcionistaSchema] = None
 
 
 # ── Avaliações físicas ─────────────────────────────────────────────────────────

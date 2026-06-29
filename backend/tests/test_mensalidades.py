@@ -134,3 +134,89 @@ def test_criar_mensalidade_insere_quando_inexistente():
         )
         criar_mensalidade("ap-uuid", 100.0, date(2026, 6, 1))
         mock_supa.table.return_value.insert.assert_called_once()
+
+
+# ── Novos testes: job_gerar_mensalidades ─────────────────────────────────────
+
+def _plano_mock(ativo_profile=True, data_inicio="2026-01-01", data_fim=None):
+    """Retorna um dict que simula uma linha de aluno_planos com joins aninhados."""
+    return {
+        "id": "ap-uuid",
+        "data_inicio": data_inicio,
+        "data_fim": data_fim,
+        "planos": {"valor": 100.0},
+        "alunos": {"profiles": {"ativo": ativo_profile}},
+    }
+
+
+def test_job_gerar_mensalidades_pula_aluno_desativado():
+    """Aluno com profiles.ativo=False não recebe nova mensalidade."""
+    with patch("app.mensalidades.jobs.supabase") as mock_supa, \
+         patch("app.mensalidades.jobs.criar_mensalidade") as mock_criar:
+        mock_supa.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(
+            data=[_plano_mock(ativo_profile=False)]
+        )
+        job_gerar_mensalidades()
+        mock_criar.assert_not_called()
+
+
+def test_job_gerar_mensalidades_plano_sem_historico_gera_do_inicio():
+    """Plano ativo sem nenhuma mensalidade prévia → gera a partir de data_inicio (safety net)."""
+    with patch("app.mensalidades.jobs.supabase") as mock_supa, \
+         patch("app.mensalidades.jobs.criar_mensalidade") as mock_criar:
+        planos_tbl = MagicMock()
+        planos_tbl.select.return_value.eq.return_value.execute.return_value = MagicMock(
+            data=[_plano_mock(data_inicio="2026-01-01")]
+        )
+
+        mens_tbl = MagicMock()
+        # query da última mensalidade retorna vazio
+        mens_tbl.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = MagicMock(data=[])
+
+        mock_supa.table.side_effect = lambda name: (
+            planos_tbl if name == "aluno_planos" else mens_tbl
+        )
+
+        job_gerar_mensalidades()
+        mock_criar.assert_called_once_with("ap-uuid", 100.0, date(2026, 1, 1))
+
+
+def test_job_gerar_mensalidades_respeita_horizonte():
+    """Próxima mensalidade além de 5 dias não é gerada; dentro do horizonte sim."""
+    hoje = date.today()
+    # Última mensalidade vence hoje → próxima = hoje+30d → além do horizonte (hoje+5d)
+    ultima_vcto_fora = hoje.isoformat()
+    # Última mensalidade vence 26 dias atrás → próxima = hoje+4d → dentro do horizonte
+    ultima_vcto_dentro = (hoje - timedelta(days=26)).isoformat()
+
+    plano_fora = {**_plano_mock(), "id": "ap-fora"}
+    plano_dentro = {**_plano_mock(), "id": "ap-dentro"}
+
+    with patch("app.mensalidades.jobs.supabase") as mock_supa, \
+         patch("app.mensalidades.jobs.criar_mensalidade") as mock_criar:
+        planos_tbl = MagicMock()
+        planos_tbl.select.return_value.eq.return_value.execute.return_value = MagicMock(
+            data=[plano_fora, plano_dentro]
+        )
+
+        mens_tbl = MagicMock()
+
+        def mens_ultima(ap_id):
+            vcto = ultima_vcto_fora if ap_id == "ap-fora" else ultima_vcto_dentro
+            return MagicMock(data=[{"data_vencimento": vcto}])
+
+        mens_tbl.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.side_effect = [
+            mens_ultima("ap-fora"),
+            mens_ultima("ap-dentro"),
+        ]
+
+        mock_supa.table.side_effect = lambda name: (
+            planos_tbl if name == "aluno_planos" else mens_tbl
+        )
+
+        job_gerar_mensalidades()
+
+        # Só o plano dentro do horizonte deve gerar
+        assert mock_criar.call_count == 1
+        call_args = mock_criar.call_args
+        assert call_args[0][0] == "ap-dentro"

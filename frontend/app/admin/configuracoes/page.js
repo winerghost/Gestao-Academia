@@ -40,6 +40,14 @@ const AREAS = [
     adminOnly: true,
   },
   {
+    href: '/admin/configuracoes/reset-senha',
+    icon: '🔑',
+    titulo: 'Redefinir Senha',
+    descricao: 'Redefina a senha de qualquer usuário',
+    itens: ['Localizar por nome ou e-mail', 'Definir nova senha sem precisar da atual'],
+    adminOnly: true,
+  },
+  {
     href: '/admin/configuracoes/aparencia',
     icon: '🎨',
     titulo: 'Aparência',

@@ -1,6 +1,9 @@
+import logging
 from datetime import date, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 from ..supabase_client import supabase
+
+_log = logging.getLogger(__name__)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -84,21 +87,31 @@ def job_atualizar_inadimplencia():
 
 def job_gerar_mensalidades():
     """
-    Roda diariamente à meia-noite.
-    Para cada aluno_plano ativo, gera a próxima mensalidade quando a última
-    vence em até 5 dias — garantindo que o aluno sempre tenha uma mensalidade futura.
+    Roda diariamente às 00:10.
+    Para cada aluno_plano ativo cujo aluno tenha conta ativa (profiles.ativo=True),
+    gera a próxima mensalidade quando a última vence em até 5 dias — garantindo
+    que o aluno sempre tenha uma mensalidade futura visível com antecedência.
     """
     hoje = date.today()
     horizonte = (hoje + timedelta(days=5)).isoformat()
 
     planos_ativos = (
         supabase.table("aluno_planos")
-        .select("id, data_fim, planos(valor)")
+        .select("id, data_inicio, data_fim, planos(valor), alunos!inner(profiles!inner(ativo))")
         .eq("status", "ativo")
         .execute()
     )
 
-    for ap in planos_ativos.data:
+    for ap in (planos_ativos.data or []):
+        # Pula alunos com conta desativada (admin setou profiles.ativo = False).
+        try:
+            if not ap["alunos"]["profiles"]["ativo"]:
+                _log.info("aluno_plano %s ignorado — conta do aluno desativada", ap["id"])
+                continue
+        except (KeyError, TypeError):
+            _log.warning("aluno_plano %s sem dados de profile — ignorado", ap.get("id"))
+            continue
+
         ultima = (
             supabase.table("mensalidades")
             .select("data_vencimento")
@@ -107,13 +120,23 @@ def job_gerar_mensalidades():
             .limit(1)
             .execute()
         )
+
         if not ultima.data:
+            # vincular_plano sempre cria a 1ª mensalidade; se não existe é sinal
+            # de falha anterior. Geramos a partir de data_inicio como safety net.
+            data_inicio = ap.get("data_inicio")
+            if data_inicio:
+                _log.warning(
+                    "aluno_plano %s sem mensalidades — gerando a partir de data_inicio=%s",
+                    ap["id"], data_inicio,
+                )
+                criar_mensalidade(ap["id"], ap["planos"]["valor"], date.fromisoformat(data_inicio))
             continue
 
         ultima_vcto = date.fromisoformat(ultima.data[0]["data_vencimento"])
         proxima_vcto = ultima_vcto + timedelta(days=30)
 
-        # Não gera se já existe mensalidade futura para esta data
+        # Não gera se próxima está além do horizonte de 5 dias
         if proxima_vcto.isoformat() > horizonte:
             continue
 
@@ -122,6 +145,7 @@ def job_gerar_mensalidades():
         if data_fim and proxima_vcto > date.fromisoformat(data_fim):
             continue
 
+        _log.info("Gerando mensalidade: aluno_plano=%s vencimento=%s", ap["id"], proxima_vcto)
         criar_mensalidade(ap["id"], ap["planos"]["valor"], proxima_vcto)
 
 

@@ -19,6 +19,7 @@ async function fetcher(endpoint, token, options = {}) {
     const err = await res.json().catch(() => ({}))
     throw new Error(err.error || `Erro ${res.status}`)
   }
+  if (res.status === 204) return null
   return res.json()
 }
 
@@ -26,7 +27,10 @@ export async function downloadRelatorio(token, endpoint) {
   const res = await fetch(`${API_URL}${endpoint}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
-  if (!res.ok) throw new Error('Erro ao gerar relatório')
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error || 'Erro ao gerar relatório')
+  }
   const blob = await res.blob()
   const cd = res.headers.get('Content-Disposition') || ''
   const match = cd.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/)
@@ -87,6 +91,10 @@ export const atualizarStatusUsuario = (token, userId, ativo) =>
     method: 'PATCH',
     body: JSON.stringify({ ativo }),
   })
+export const criarUsuario = (token, data) =>
+  fetcher('/configuracoes/usuarios', token, { method: 'POST', body: JSON.stringify(data) })
+export const excluirUsuario = (token, userId) =>
+  fetcher(`/configuracoes/usuarios/${userId}`, token, { method: 'DELETE' })
 
 // Foto de qualquer usuário (admin/recepcionista) — multipart no upload.
 export async function adminUploadAvatarUsuario(token, userId, file) {
@@ -105,6 +113,11 @@ export async function adminUploadAvatarUsuario(token, userId, file) {
 }
 export const adminRemoverAvatarUsuario = (token, userId) =>
   fetcher(`/configuracoes/usuarios/${userId}/avatar`, token, { method: 'DELETE' })
+export const resetSenhaUsuario = (token, userId, senhaNova) =>
+  fetcher(`/configuracoes/usuarios/${userId}/reset-senha`, token, {
+    method: 'POST',
+    body: JSON.stringify({ senha_nova: senhaNova }),
+  })
 
 // Configurações da academia
 export const getConfigAcademia = (token) => fetcher('/configuracoes/academia', token)

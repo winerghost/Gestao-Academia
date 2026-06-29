@@ -7,6 +7,16 @@ import {
   uploadAvatar, removerAvatar, usarGravatar,
 } from '../../../../lib/api'
 
+// Converte data URL (canvas.toDataURL) em File para reutilizar o upload multipart.
+function dataUrlParaFile(dataUrl, nome = 'webcam.jpg') {
+  const [header, b64] = dataUrl.split(',')
+  const mime = header.match(/:(.*?);/)?.[1] || 'image/jpeg'
+  const bin = atob(b64)
+  const arr = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i)
+  return new File([arr], nome, { type: mime })
+}
+
 const input = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2'
 const ring = { '--tw-ring-color': 'var(--cor-destaque)' }
 const btn = 'text-white px-5 py-2 rounded-lg text-sm font-medium transition disabled:opacity-60'
@@ -71,9 +81,11 @@ export default function ContaPage() {
 
   // Foto de perfil (avatar)
   const fileRef = useRef(null)
+  const videoRef = useRef(null)
   const [avatarUrl, setAvatarUrl] = useState(null)
   const [avatarBusy, setAvatarBusy] = useState('') // '', 'upload', 'gravatar', 'remover'
   const [msgAvatar, setMsgAvatar] = useState({ tipo: '', texto: '' })
+  const [cameraStream, setCameraStream] = useState(null)
 
   // Senha
   const [senha, setSenha] = useState({ senha_atual: '', senha_nova: '', confirmar: '' })
@@ -92,6 +104,48 @@ export default function ContaPage() {
     }
     init()
   }, [token])
+
+  // Vincula o stream ao <video> e desliga a câmera ao desmontar / parar.
+  useEffect(() => {
+    if (cameraStream && videoRef.current) videoRef.current.srcObject = cameraStream
+    return () => { if (cameraStream) cameraStream.getTracks().forEach(t => t.stop()) }
+  }, [cameraStream])
+
+  async function abrirCamera() {
+    setMsgAvatar({ tipo: '', texto: '' })
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
+      setCameraStream(s)
+    } catch {
+      setMsgAvatar({ tipo: 'erro', texto: 'Não foi possível acessar a câmera. Verifique a permissão ou use o botão de arquivo.' })
+    }
+  }
+
+  function fecharCamera() {
+    if (cameraStream) cameraStream.getTracks().forEach(t => t.stop())
+    setCameraStream(null)
+  }
+
+  async function capturarFoto() {
+    const v = videoRef.current
+    if (!v || !v.videoWidth) return
+    const lado = Math.min(v.videoWidth, v.videoHeight)
+    const c = document.createElement('canvas')
+    c.width = lado; c.height = lado
+    c.getContext('2d').drawImage(v, (v.videoWidth - lado) / 2, (v.videoHeight - lado) / 2, lado, lado, 0, 0, lado, lado)
+    fecharCamera()
+    const file = dataUrlParaFile(c.toDataURL('image/jpeg', 0.85))
+    setAvatarBusy('upload')
+    setMsgAvatar({ tipo: '', texto: '' })
+    try {
+      const { avatar_url } = await uploadAvatar(token, file)
+      aplicarAvatar(avatar_url)
+      setMsgAvatar({ tipo: 'ok', texto: 'Foto tirada com sucesso.' })
+    } catch (err) {
+      setMsgAvatar({ tipo: 'erro', texto: err.message })
+    }
+    setAvatarBusy('')
+  }
 
   // Atualiza o estado local e avisa o layout (navbar/sidebar) em tempo real.
   function aplicarAvatar(url) {
@@ -208,35 +262,78 @@ export default function ContaPage() {
               className="hidden"
               onChange={aoSelecionarArquivo}
             />
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                className={btn}
-                style={btnStyle}
-                disabled={!!avatarBusy}
-                onClick={() => fileRef.current?.click()}
-              >
-                {avatarBusy === 'upload' ? 'Enviando...' : (avatarUrl ? 'Trocar foto' : 'Enviar foto')}
-              </button>
-              <button
-                type="button"
-                className="px-5 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-700 hover:bg-gray-50 transition disabled:opacity-60"
-                disabled={!!avatarBusy}
-                onClick={aoUsarGravatar}
-              >
-                {avatarBusy === 'gravatar' ? 'Buscando...' : 'Usar meu Gravatar'}
-              </button>
-              {avatarUrl && (
+
+            {cameraStream ? (
+              /* Modo câmera: vídeo ao vivo + capturar/cancelar */
+              <div className="flex flex-col gap-2">
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-36 h-36 rounded-xl object-cover bg-black"
+                  style={{ transform: 'scaleX(-1)' }}
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className={btn}
+                    style={btnStyle}
+                    onClick={capturarFoto}
+                    disabled={!!avatarBusy}
+                  >
+                    📸 Capturar
+                  </button>
+                  <button
+                    type="button"
+                    className="px-5 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
+                    onClick={fecharCamera}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Modo normal: botões de upload, câmera, gravatar e remoção */
+              <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  className="px-5 py-2 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition disabled:opacity-60"
+                  className={btn}
+                  style={btnStyle}
                   disabled={!!avatarBusy}
-                  onClick={aoRemoverFoto}
+                  onClick={() => fileRef.current?.click()}
                 >
-                  {avatarBusy === 'remover' ? 'Removendo...' : 'Remover foto'}
+                  {avatarBusy === 'upload' ? 'Enviando...' : (avatarUrl ? 'Trocar foto' : 'Enviar foto')}
                 </button>
-              )}
-            </div>
+                <button
+                  type="button"
+                  className="px-5 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-700 hover:bg-gray-50 transition disabled:opacity-60"
+                  disabled={!!avatarBusy}
+                  onClick={abrirCamera}
+                >
+                  📷 Tirar foto
+                </button>
+                <button
+                  type="button"
+                  className="px-5 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-700 hover:bg-gray-50 transition disabled:opacity-60"
+                  disabled={!!avatarBusy}
+                  onClick={aoUsarGravatar}
+                >
+                  {avatarBusy === 'gravatar' ? 'Buscando...' : 'Usar meu Gravatar'}
+                </button>
+                {avatarUrl && (
+                  <button
+                    type="button"
+                    className="px-5 py-2 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition disabled:opacity-60"
+                    disabled={!!avatarBusy}
+                    onClick={aoRemoverFoto}
+                  >
+                    {avatarBusy === 'remover' ? 'Removendo...' : 'Remover foto'}
+                  </button>
+                )}
+              </div>
+            )}
+
             <p className="text-xs text-gray-400 mt-2">
               JPG, PNG ou WEBP até 4 MB. A imagem é recortada em formato quadrado.
               O Gravatar usa a foto vinculada ao e-mail da sua conta.

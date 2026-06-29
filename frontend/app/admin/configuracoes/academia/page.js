@@ -18,6 +18,19 @@ function horarioPadrao() {
   return { abre: '06:00', fecha: '22:00', fechado: false }
 }
 
+const PERMS_LABELS = [
+  {
+    key: 'relatorio_financeiro',
+    label: 'Relatório financeiro',
+    desc: 'Mensalidades, pagamentos e juros do mês',
+  },
+  {
+    key: 'relatorio_inadimplencia',
+    label: 'Relatório de inadimplência',
+    desc: 'Alunos com mensalidades atrasadas',
+  },
+]
+
 export default function AcademiaPage() {
   const { token } = useAuth()
   const [loading, setLoading] = useState(true)
@@ -28,6 +41,10 @@ export default function AcademiaPage() {
   const [horarios, setHorarios] = useState(() =>
     Object.fromEntries(DIAS.map(([k]) => [k, horarioPadrao()]))
   )
+  const [permissoesRecep, setPermissoesRecep] = useState({
+    relatorio_financeiro: false,
+    relatorio_inadimplencia: false,
+  })
 
   useEffect(() => {
     if (!token) return
@@ -45,6 +62,12 @@ export default function AcademiaPage() {
           }
           return merged
         })
+        if (c.permissoes_recepcionista) {
+          setPermissoesRecep({
+            relatorio_financeiro: c.permissoes_recepcionista.relatorio_financeiro ?? false,
+            relatorio_inadimplencia: c.permissoes_recepcionista.relatorio_inadimplencia ?? false,
+          })
+        }
       } catch (err) {
         setMsg({ tipo: 'erro', texto: err.message })
       }
@@ -62,7 +85,11 @@ export default function AcademiaPage() {
     setSalvando(true)
     setMsg({ tipo: '', texto: '' })
     try {
-      await atualizarConfigAcademia(token, { ...dados, horarios })
+      await atualizarConfigAcademia(token, {
+        ...dados,
+        horarios,
+        permissoes_recepcionista: permissoesRecep,
+      })
       setMsg({ tipo: 'ok', texto: 'Configurações da academia salvas.' })
     } catch (err) {
       setMsg({ tipo: 'erro', texto: err.message })
@@ -138,6 +165,31 @@ export default function AcademiaPage() {
                 </div>
               )
             })}
+          </div>
+        </div>
+
+        {/* Permissões da Recepcionista */}
+        <div className="bg-white rounded-xl shadow-sm p-5 mb-6">
+          <h2 className="text-sm font-semibold text-gray-700 mb-1">Permissões — Recepcionista</h2>
+          <p className="text-xs text-gray-400 mb-4">
+            Relatórios financeiros são restritos ao Administrador por padrão.
+            Habilite abaixo para liberar o acesso ao cargo Recepcionista.
+          </p>
+          <div className="space-y-3">
+            {PERMS_LABELS.map(({ key, label, desc }) => (
+              <label key={key} className="flex items-start gap-3 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={permissoesRecep[key] || false}
+                  onChange={e => setPermissoesRecep(p => ({ ...p, [key]: e.target.checked }))}
+                  className="mt-0.5 accent-orange-500 w-4 h-4 flex-shrink-0"
+                />
+                <div>
+                  <p className="text-sm font-medium text-gray-700 group-hover:text-gray-900 transition">{label}</p>
+                  <p className="text-xs text-gray-400">{desc}</p>
+                </div>
+              </label>
+            ))}
           </div>
         </div>
 

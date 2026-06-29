@@ -1,6 +1,6 @@
 from datetime import date
 from calendar import monthrange
-from flask import Blueprint, request, send_file, jsonify
+from flask import Blueprint, request, send_file, jsonify, g
 from ..supabase_client import supabase
 from ..auth.middleware import require_role
 from ..validation import mes_valido
@@ -8,6 +8,30 @@ from .pdf import gerar_pdf
 from .excel import gerar_excel
 
 relatorios_bp = Blueprint("relatorios", __name__, url_prefix="/relatorios")
+
+
+def _verificar_permissao_recep(campo: str):
+    """Retorna 403 se o usuário é recepcionista e não tem permissão para o relatório.
+
+    Admins passam sempre. Qualquer outro papel (instrutor, aluno) não chega
+    aqui porque o @require_role("admin", "recepcionista") já bloqueia.
+    """
+    if g.user_tipo != "recepcionista":
+        return None
+    cfg = (
+        supabase.table("academia_config")
+        .select("permissoes_recepcionista")
+        .eq("id", 1)
+        .single()
+        .execute()
+    )
+    perms = (cfg.data or {}).get("permissoes_recepcionista") or {}
+    if not perms.get(campo, False):
+        return jsonify({
+            "error": "Acesso a este relatório não está habilitado para o cargo Recepcionista. "
+                     "Solicite ao administrador em Configurações → Academia."
+        }), 403
+    return None
 
 MIME_PDF = "application/pdf"
 MIME_EXCEL = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -92,6 +116,10 @@ def relatorio_alunos():
 @relatorios_bp.get("/financeiro")
 @require_role("admin", "recepcionista")
 def relatorio_financeiro():
+    bloqueio = _verificar_permissao_recep("relatorio_financeiro")
+    if bloqueio:
+        return bloqueio
+
     formato = request.args.get("formato", "pdf")
     mes = request.args.get("mes")  # ex: 2026-06
 
@@ -142,6 +170,10 @@ def relatorio_financeiro():
 @relatorios_bp.get("/inadimplencia")
 @require_role("admin", "recepcionista")
 def relatorio_inadimplencia():
+    bloqueio = _verificar_permissao_recep("relatorio_inadimplencia")
+    if bloqueio:
+        return bloqueio
+
     formato = request.args.get("formato", "pdf")
 
     erro = _validar_formato(formato)

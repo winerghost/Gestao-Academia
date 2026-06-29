@@ -1,7 +1,7 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuth } from '../../../hooks/useAuth'
-import { downloadRelatorio } from '../../../lib/api'
+import { downloadRelatorio, getMe, getConfigAcademia } from '../../../lib/api'
 
 function RelCard({ titulo, descricao, emoji, onDownload, carregando }) {
   const [formato, setFormato] = useState('pdf')
@@ -29,42 +29,73 @@ function RelCard({ titulo, descricao, emoji, onDownload, carregando }) {
   )
 }
 
+const TODOS_RELATORIOS = [
+  {
+    titulo: 'Relatório de alunos',
+    descricao: 'Lista completa com status, planos e contatos.',
+    emoji: '👥',
+    endpoint: '/relatorios/alunos',
+    permCampo: null, // sem restrição para recepcionista
+  },
+  {
+    titulo: 'Relatório financeiro',
+    descricao: 'Mensalidades pagas, pendentes e atrasadas do mês.',
+    emoji: '💰',
+    endpoint: '/relatorios/financeiro',
+    permCampo: 'relatorio_financeiro',
+  },
+  {
+    titulo: 'Relatório de inadimplência',
+    descricao: 'Alunos em atraso com dias de inadimplência.',
+    emoji: '⚠️',
+    endpoint: '/relatorios/inadimplencia',
+    permCampo: 'relatorio_inadimplencia',
+  },
+]
+
 export default function RelatoriosPage() {
   const { token } = useAuth()
-  const [loading, setLoading] = useState({})
+  const [loading, setLoading] = useState(true)
+  const [carregando, setCarregando] = useState({})
   const [erro, setErro] = useState('')
+  const [userTipo, setUserTipo] = useState('')
+  const [permsRecep, setPermsRecep] = useState({})
+
+  useEffect(() => {
+    if (!token) return
+    async function init() {
+      try {
+        const [me, config] = await Promise.all([getMe(token), getConfigAcademia(token)])
+        setUserTipo(me.tipo)
+        setPermsRecep(config.permissoes_recepcionista || {})
+      } catch { /* layout já trata sessão */ }
+      setLoading(false)
+    }
+    init()
+  }, [token])
 
   async function baixar(endpoint, formato) {
-    setLoading(l => ({ ...l, [endpoint]: true }))
+    setCarregando(l => ({ ...l, [endpoint]: true }))
     setErro('')
     try {
       await downloadRelatorio(token, `${endpoint}?formato=${formato}`)
     } catch (err) {
       setErro(err.message)
     }
-    setLoading(l => ({ ...l, [endpoint]: false }))
+    setCarregando(l => ({ ...l, [endpoint]: false }))
   }
 
-  const relatorios = [
-    {
-      titulo: 'Relatório de alunos',
-      descricao: 'Lista completa com status, planos e contatos.',
-      emoji: '👥',
-      endpoint: '/relatorios/alunos',
-    },
-    {
-      titulo: 'Relatório financeiro',
-      descricao: 'Mensalidades pagas, pendentes e atrasadas do mês.',
-      emoji: '💰',
-      endpoint: '/relatorios/financeiro',
-    },
-    {
-      titulo: 'Relatório de inadimplência',
-      descricao: 'Alunos em atraso com dias de inadimplência.',
-      emoji: '⚠️',
-      endpoint: '/relatorios/inadimplencia',
-    },
-  ]
+  const relatorios = TODOS_RELATORIOS.filter(r => {
+    if (userTipo === 'admin') return true
+    if (!r.permCampo) return true // sem restrição
+    return !!permsRecep[r.permCampo]
+  })
+
+  const bloqueados = userTipo === 'recepcionista'
+    ? TODOS_RELATORIOS.filter(r => r.permCampo && !permsRecep[r.permCampo])
+    : []
+
+  if (loading) return <p className="text-gray-400">Carregando...</p>
 
   return (
     <div>
@@ -86,11 +117,24 @@ export default function RelatoriosPage() {
             titulo={r.titulo}
             descricao={r.descricao}
             emoji={r.emoji}
-            carregando={loading[r.endpoint]}
+            carregando={carregando[r.endpoint]}
             onDownload={(fmt) => baixar(r.endpoint, fmt)}
           />
         ))}
       </div>
+
+      {/* Aviso quando recepcionista tem relatórios bloqueados */}
+      {bloqueados.length > 0 && (
+        <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 mb-4">
+          <p className="text-sm text-amber-700">
+            <strong>Acesso restrito:</strong>{' '}
+            {bloqueados.map(r => r.titulo).join(' e ')}{' '}
+            {bloqueados.length === 1 ? 'está disponível' : 'estão disponíveis'} apenas para Administradores.
+            Solicite ao administrador em{' '}
+            <strong>Configurações → Academia</strong>.
+          </p>
+        </div>
+      )}
 
       <div className="bg-orange-50 border border-orange-100 rounded-xl p-4">
         <p className="text-sm text-orange-700">

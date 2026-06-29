@@ -18,6 +18,13 @@ export default function InstrutorDetalhe() {
   const [planoSel, setPlanoSel] = useState('')
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
+  const [toast, setToast] = useState(null)
+  const [confirmandoDesvincular, setConfirmandoDesvincular] = useState(null)
+
+  function exibirToast(msg, ok = true) {
+    setToast({ msg, ok })
+    setTimeout(() => setToast(null), 4000)
+  }
 
   async function carregar(t) {
     const [i, p, tp] = await Promise.all([
@@ -55,6 +62,7 @@ export default function InstrutorDetalhe() {
       })
       await carregar(token)
       setEditando(false)
+      exibirToast('Dados do instrutor atualizados.')
     } catch (err) {
       setErro(err.message)
     }
@@ -69,19 +77,21 @@ export default function InstrutorDetalhe() {
       await vincularPlanoInstrutor(token, id, planoSel)
       setPlanoSel('')
       await carregar(token)
+      exibirToast('Plano vinculado com sucesso.')
     } catch (err) {
       setErro(err.message)
     }
     setSalvando(false)
   }
 
-  async function desvincular(ipId) {
-    if (!confirm('Remover vínculo com este plano?')) return
+  async function executarDesvincular(ipId) {
+    setConfirmandoDesvincular(null)
     try {
       await desvincularPlanoInstrutor(token, id, ipId)
       await carregar(token)
+      exibirToast('Vínculo removido.')
     } catch (err) {
-      alert(err.message)
+      exibirToast(err.message, false)
     }
   }
 
@@ -176,10 +186,24 @@ export default function InstrutorDetalhe() {
                     <p className="text-sm font-medium text-gray-700">{ip.planos?.nome}</p>
                     <p className="text-xs text-gray-400">R$ {Number(ip.planos?.valor || 0).toFixed(2)}/mês</p>
                   </div>
-                  <button onClick={() => desvincular(ip.id)}
-                    className="text-xs text-red-400 hover:text-red-600 transition">
-                    ✕ Remover
-                  </button>
+                  {confirmandoDesvincular === ip.id ? (
+                    <span className="flex items-center gap-2">
+                      <span className="text-xs text-gray-600">Remover?</span>
+                      <button onClick={() => executarDesvincular(ip.id)}
+                        className="text-xs font-semibold text-red-600 hover:underline">
+                        Sim
+                      </button>
+                      <button onClick={() => setConfirmandoDesvincular(null)}
+                        className="text-xs text-gray-500 hover:underline">
+                        Não
+                      </button>
+                    </span>
+                  ) : (
+                    <button onClick={() => setConfirmandoDesvincular(ip.id)}
+                      className="text-xs text-red-400 hover:text-red-600 transition">
+                      ✕ Remover
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -206,6 +230,12 @@ export default function InstrutorDetalhe() {
           </div>
         </div>
       </div>
+
+      {toast && (
+        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 px-5 py-3 rounded-xl shadow-lg text-sm font-medium text-white z-50 max-w-sm text-center transition-all ${toast.ok ? 'bg-green-500' : 'bg-red-500'}`}>
+          {toast.msg}
+        </div>
+      )}
     </div>
   )
 }

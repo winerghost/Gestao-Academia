@@ -285,6 +285,13 @@ export default function AvaliacaoDetalhe() {
   const [salvando, setSalvando] = useState(false)
   const [loading,  setLoading]  = useState(true)
   const [userTipo, setUserTipo] = useState('')
+  const [toast, setToast] = useState(null)
+  const [confirmandoExcluir, setConfirmandoExcluir] = useState(false)
+
+  function exibirToast(msg, ok = true) {
+    setToast({ msg, ok })
+    setTimeout(() => setToast(null), 4000)
+  }
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -332,19 +339,20 @@ export default function AvaliacaoDetalhe() {
       await atualizarAvaliacao(token, id, form)
       await carregar(token)
       setEditando(false)
+      exibirToast('Avaliação salva com sucesso.')
     } catch (err) {
       setErro(err.message)
     }
     setSalvando(false)
   }
 
-  async function excluir() {
-    if (!confirm('Excluir esta avaliação? Esta ação não pode ser desfeita.')) return
+  async function executarExcluir() {
+    setConfirmandoExcluir(false)
     try {
       await deletarAvaliacao(token, id)
       router.replace('/admin/avaliacoes')
     } catch (err) {
-      alert(err.message)
+      exibirToast(err.message, false)
     }
   }
 
@@ -386,10 +394,24 @@ export default function AvaliacaoDetalhe() {
             </button>
           )}
           {userTipo === 'admin' && (
-            <button onClick={excluir}
-              className="border border-red-200 bg-white hover:bg-red-50 text-red-500 px-3 py-2 rounded-lg text-sm font-medium transition">
-              🗑️ Excluir
-            </button>
+            confirmandoExcluir ? (
+              <span className="flex items-center gap-2 border border-red-200 bg-red-50 px-3 py-2 rounded-lg">
+                <span className="text-sm text-red-600">Excluir definitivamente?</span>
+                <button onClick={executarExcluir}
+                  className="text-sm font-semibold text-red-700 hover:underline">
+                  Sim
+                </button>
+                <button onClick={() => setConfirmandoExcluir(false)}
+                  className="text-sm text-gray-500 hover:underline">
+                  Não
+                </button>
+              </span>
+            ) : (
+              <button onClick={() => setConfirmandoExcluir(true)}
+                className="border border-red-200 bg-white hover:bg-red-50 text-red-500 px-3 py-2 rounded-lg text-sm font-medium transition">
+                🗑️ Excluir
+              </button>
+            )
           )}
         </div>
       </div>
@@ -598,6 +620,12 @@ export default function AvaliacaoDetalhe() {
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 px-5 py-3 rounded-xl shadow-lg text-sm font-medium text-white z-50 max-w-sm text-center transition-all ${toast.ok ? 'bg-green-500' : 'bg-red-500'}`}>
+          {toast.msg}
         </div>
       )}
     </div>

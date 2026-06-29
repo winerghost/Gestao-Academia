@@ -2,11 +2,13 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '../../../hooks/useAuth'
 import { getMensalidades, pagarMensalidade } from '../../../lib/api'
+import TabelaShell, { TH, TD, BTN_ICON } from '../../../components/TabelaShell'
+import { IcoCheck } from '../../../components/IcoAcoes'
 
 const BADGE = {
-  paga: 'bg-green-100 text-green-700',
-  pendente: 'bg-yellow-100 text-yellow-700',
-  atrasada: 'bg-red-100 text-red-700',
+  paga:     'bg-green-50 text-green-700',
+  pendente: 'bg-yellow-50 text-yellow-700',
+  atrasada: 'bg-red-50 text-red-600',
 }
 
 const FILTROS = [
@@ -16,12 +18,32 @@ const FILTROS = [
   { value: 'paga', label: 'Pagas' },
 ]
 
+const COLUNAS = ['Aluno', 'Plano', 'Vencimento', 'Valor', 'Juros', 'Total', 'Status', 'Ações']
+
+function fmt(v) {
+  return Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+}
+
+function fmtData(s) {
+  if (!s) return '—'
+  const [ano, mes, dia] = s.split('-')
+  return `${dia}/${mes}/${ano}`
+}
+
 export default function MensalidadesPage() {
   const { token } = useAuth()
   const [mensalidades, setMensalidades] = useState([])
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState('')
   const [mes, setMes] = useState('')
+  const [confirmandoId, setConfirmandoId] = useState(null)
+  const [pagandoId, setPagandoId] = useState(null)
+  const [toast, setToast] = useState(null)
+
+  function exibirToast(msg, tipo = 'erro') {
+    setToast({ msg, tipo })
+    setTimeout(() => setToast(null), 4000)
+  }
 
   const carregar = useCallback(async (t, s, m) => {
     const params = {}
@@ -45,99 +67,117 @@ export default function MensalidadesPage() {
   }, [status, mes, token, carregar])
 
   async function pagar(id) {
-    if (!confirm('Confirmar pagamento desta mensalidade?')) return
+    setPagandoId(id)
     try {
       await pagarMensalidade(token, id)
       await carregar(token, status, mes)
+      setConfirmandoId(null)
     } catch (err) {
-      alert(err.message)
+      exibirToast(err.message || 'Erro ao registrar pagamento.')
     }
+    setPagandoId(null)
   }
 
   const totalValor = mensalidades.reduce((s, m) => s + (m.valor_total || 0), 0)
-  const totalPago = mensalidades.filter(m => m.status === 'paga').reduce((s, m) => s + (m.valor_total || 0), 0)
 
   return (
     <div>
+      {/* Cabeçalho */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Mensalidades</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          {mensalidades.length} registro(s) — Valor total: R$ {totalValor.toFixed(2)}
-          {status === 'paga' && ` — Pago: R$ ${totalPago.toFixed(2)}`}
+        <p className="text-sm text-gray-400 mt-0.5">
+          {mensalidades.length} registro(s) — Total: R$ {fmt(totalValor)}
         </p>
       </div>
 
+      {/* Toast */}
+      {toast && (
+        <div className={`mb-4 px-4 py-3 rounded-lg text-sm font-medium ${
+          toast.tipo === 'sucesso' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+        }`}>
+          {toast.msg}
+        </div>
+      )}
+
       {/* Filtros */}
-      <div className="flex gap-3 mb-4 flex-wrap items-center">
+      <div className="flex gap-2 mb-4 flex-wrap items-center">
         {FILTROS.map(f => (
           <button key={f.value} onClick={() => setStatus(f.value)}
             className={`px-3 py-2 rounded-lg text-sm font-medium transition
-              ${status === f.value ? 'bg-orange-500 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+              ${status === f.value ? 'bg-orange-500 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
             {f.label}
           </button>
         ))}
         <input type="month" value={mes} onChange={e => setMes(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white" />
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white" />
         {mes && (
-          <button onClick={() => setMes('')} className="text-sm text-gray-400 hover:text-gray-600">✕ Limpar mês</button>
+          <button onClick={() => setMes('')} className="text-sm text-gray-400 hover:text-gray-600 transition">
+            ✕ Limpar mês
+          </button>
         )}
       </div>
 
       {/* Tabela */}
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-        {loading ? (
-          <p className="text-center text-gray-400 py-12">Carregando...</p>
-        ) : mensalidades.length === 0 ? (
-          <p className="text-center text-gray-400 py-12">Nenhuma mensalidade encontrada.</p>
-        ) : (
-          <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-100">
-              <tr>
-                {['Aluno', 'Plano', 'Vencimento', 'Valor', 'Juros', 'Total', 'Status', 'Ações'].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
-                ))}
+      <TabelaShell loading={loading} vazio={mensalidades.length === 0 && 'Nenhuma mensalidade encontrada.'}>
+        <thead className="bg-gray-50 border-b border-gray-100">
+          <tr>
+            {COLUNAS.map(h => <th key={h} className={TH}>{h}</th>)}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {mensalidades.map(m => {
+            const nomeAluno = m.aluno_planos?.alunos?.profiles?.nome || '—'
+            const nomePlano = m.aluno_planos?.planos?.nome || '—'
+            const confirmando = confirmandoId === m.id
+            return (
+              <tr key={m.id} className="hover:bg-gray-50/60 transition-colors">
+                <td className={`${TD} font-medium text-gray-800`}>{nomeAluno}</td>
+                <td className={`${TD} text-gray-500`}>{nomePlano}</td>
+                <td className={`${TD} text-gray-500`}>{fmtData(m.data_vencimento)}</td>
+                <td className={`${TD} text-gray-700`}>R$ {fmt(m.valor)}</td>
+                <td className={`${TD} ${m.juros > 0 ? 'text-red-500' : 'text-gray-400'}`}>
+                  {m.juros > 0 ? `R$ ${fmt(m.juros)}` : '—'}
+                </td>
+                <td className={`${TD} font-semibold text-gray-800`}>
+                  R$ {fmt(m.valor_total)}
+                </td>
+                <td className={TD}>
+                  <span className={`inline-flex items-center text-xs font-semibold px-2.5 py-0.5 rounded-full capitalize ${BADGE[m.status] ?? 'bg-gray-100 text-gray-500'}`}>
+                    {m.status}
+                  </span>
+                </td>
+                <td className={`${TD} min-w-[110px]`}>
+                  {m.status === 'paga' ? (
+                    <span className="text-xs text-gray-400">{fmtData(m.data_pagamento)}</span>
+                  ) : confirmando ? (
+                    <span className="flex items-center gap-1.5 text-xs">
+                      <button
+                        onClick={() => pagar(m.id)}
+                        disabled={pagandoId === m.id}
+                        className="px-2 py-1 rounded-md bg-green-500 text-white font-medium hover:bg-green-600 transition disabled:opacity-60">
+                        {pagandoId === m.id ? '...' : 'Confirmar'}
+                      </button>
+                      <button
+                        onClick={() => setConfirmandoId(null)}
+                        className="px-2 py-1 rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50 transition">
+                        Não
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmandoId(m.id)}
+                      className={`${BTN_ICON} inline-flex items-center gap-1.5 text-xs font-medium text-green-600 hover:text-green-700 hover:bg-green-50`}
+                      title="Registrar pagamento">
+                      <IcoCheck size={14} />
+                      Pagar
+                    </button>
+                  )}
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {mensalidades.map(m => {
-                const nomeAluno = m.aluno_planos?.alunos?.profiles?.nome || '—'
-                const nomePlano = m.aluno_planos?.planos?.nome || '—'
-                return (
-                  <tr key={m.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm font-medium text-gray-800">{nomeAluno}</td>
-                    <td className="px-4 py-3 text-sm text-gray-500">{nomePlano}</td>
-                    <td className="px-4 py-3 text-sm text-gray-500">{m.data_vencimento}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">R$ {Number(m.valor).toFixed(2)}</td>
-                    <td className="px-4 py-3 text-sm text-red-500">
-                      {m.juros > 0 ? `R$ ${Number(m.juros).toFixed(2)}` : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-sm font-semibold text-gray-800">
-                      R$ {Number(m.valor_total).toFixed(2)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium capitalize ${BADGE[m.status]}`}>
-                        {m.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      {m.status !== 'paga' ? (
-                        <button onClick={() => pagar(m.id)}
-                          className="text-orange-500 hover:text-orange-700 text-xs font-medium">
-                          Pagar
-                        </button>
-                      ) : (
-                        <span className="text-xs text-gray-400">{m.data_pagamento}</span>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-          </div>
-        )}
-      </div>
+            )
+          })}
+        </tbody>
+      </TabelaShell>
     </div>
   )
 }

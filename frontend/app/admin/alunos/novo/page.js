@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '../../../../hooks/useAuth'
 import { criarAluno } from '../../../../lib/api'
-import CapturaFoto from '../_CapturaFoto'
+import CapturaFoto from '@/components/CapturaFoto'
 
 export default function NovoAluno() {
   const router = useRouter()

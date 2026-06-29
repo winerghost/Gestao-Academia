@@ -145,3 +145,97 @@ def test_relatorio_inadimplencia_vazio_pdf(client):
         res = client.get("/relatorios/inadimplencia?formato=pdf", headers=_auth_headers())
         assert res.status_code == 200
         assert res.content_type == "application/pdf"
+
+
+# ── Permissões de Recepcionista ───────────────────────────────────────────────
+
+def _config_perms(relatorio_financeiro=False, relatorio_inadimplencia=False):
+    """Cria mock de academia_config com as permissões especificadas."""
+    tbl = MagicMock()
+    tbl.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
+        data={"permissoes_recepcionista": {
+            "relatorio_financeiro": relatorio_financeiro,
+            "relatorio_inadimplencia": relatorio_inadimplencia,
+        }}
+    )
+    return tbl
+
+
+def test_financeiro_recep_sem_permissao_retorna_403(client):
+    with patch("app.relatorios.routes.supabase") as mock_supa, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth, tipo="recepcionista")
+        mock_supa.table.side_effect = lambda name: _config_perms() if name == "academia_config" else MagicMock()
+
+        res = client.get("/relatorios/financeiro?formato=pdf", headers=_auth_headers())
+        assert res.status_code == 403
+        assert "Recepcionista" in res.get_json()["error"]
+
+
+def test_financeiro_recep_com_permissao_retorna_200(client):
+    with patch("app.relatorios.routes.supabase") as mock_supa, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth, tipo="recepcionista")
+
+        chain = mock_supa.table.return_value.select.return_value
+        chain.eq.return_value.single.return_value.execute.return_value = MagicMock(
+            data={"permissoes_recepcionista": {"relatorio_financeiro": True, "relatorio_inadimplencia": False}}
+        )
+        chain.gte.return_value.lte.return_value.order.return_value.execute.return_value = MagicMock(
+            data=[_mensalidade_fake()]
+        )
+
+        res = client.get("/relatorios/financeiro?formato=pdf&mes=2026-06", headers=_auth_headers())
+        assert res.status_code == 200
+        assert res.content_type == "application/pdf"
+
+
+def test_inadimplencia_recep_sem_permissao_retorna_403(client):
+    with patch("app.relatorios.routes.supabase") as mock_supa, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth, tipo="recepcionista")
+        mock_supa.table.side_effect = lambda name: _config_perms() if name == "academia_config" else MagicMock()
+
+        res = client.get("/relatorios/inadimplencia?formato=pdf", headers=_auth_headers())
+        assert res.status_code == 403
+
+
+def test_inadimplencia_recep_com_permissao_retorna_200(client):
+    with patch("app.relatorios.routes.supabase") as mock_supa, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth, tipo="recepcionista")
+
+        config_tbl = _config_perms(relatorio_inadimplencia=True)
+        data_tbl = MagicMock()
+        data_tbl.select.return_value.eq.return_value.order.return_value.execute.return_value = MagicMock(data=[])
+
+        mock_supa.table.side_effect = lambda name: config_tbl if name == "academia_config" else data_tbl
+
+        res = client.get("/relatorios/inadimplencia?formato=pdf", headers=_auth_headers())
+        assert res.status_code == 200
+
+
+def test_alunos_recep_sem_permissao_especial_retorna_200(client):
+    """Relatório de alunos não tem restrição por permissão — recepcionista sempre acessa."""
+    with patch("app.relatorios.routes.supabase") as mock_supa, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth, tipo="recepcionista")
+        mock_supa.table.return_value.select.return_value.order.return_value.execute.return_value = MagicMock(
+            data=[_aluno_fake()]
+        )
+
+        res = client.get("/relatorios/alunos?formato=pdf", headers=_auth_headers())
+        assert res.status_code == 200
+
+
+def test_financeiro_admin_sempre_retorna_200(client):
+    """Admin acessa o relatório financeiro independente de qualquer config."""
+    with patch("app.relatorios.routes.supabase") as mock_supa, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth, tipo="admin")
+        mock_supa.table.return_value.select.return_value.gte.return_value.lte.return_value.order.return_value.execute.return_value = MagicMock(
+            data=[_mensalidade_fake()]
+        )
+
+        res = client.get("/relatorios/financeiro?formato=pdf&mes=2026-06", headers=_auth_headers())
+        assert res.status_code == 200

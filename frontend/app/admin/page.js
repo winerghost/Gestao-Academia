@@ -68,6 +68,22 @@ export default function AdminDashboard() {
         <p className="text-sm text-gray-500 mt-1 capitalize">Visão geral — {mesRef}</p>
       </div>
 
+      {/* Atalhos */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[
+          { label: 'Cadastrar aluno', href: '/admin/alunos/novo', emoji: '➕' },
+          { label: 'Inadimplentes', href: '/admin/mensalidades?status=atrasada', emoji: '⚠️' },
+          { label: 'Relatórios', href: '/admin/relatorios', emoji: '📄' },
+          { label: 'Gerenciar planos', href: '/admin/planos', emoji: '📋' },
+        ].map(({ label, href, emoji }) => (
+          <Link key={href} href={href}
+            className="bg-white rounded-xl shadow-sm p-4 flex items-center gap-3 hover:shadow-md transition group">
+            <span className="text-xl">{emoji}</span>
+            <span className="text-sm font-medium text-gray-700 group-hover:text-orange-600 transition">{label}</span>
+          </Link>
+        ))}
+      </div>
+
       {/* KPIs alunos */}
       <section>
         <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-3">Alunos</h2>
@@ -125,22 +141,6 @@ export default function AdminDashboard() {
             </div>
           )}
         </div>
-      </div>
-
-      {/* Atalhos */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {[
-          { label: 'Cadastrar aluno', href: '/admin/alunos/novo', emoji: '➕' },
-          { label: 'Inadimplentes', href: '/admin/mensalidades?status=atrasada', emoji: '⚠️' },
-          { label: 'Relatórios', href: '/admin/relatorios', emoji: '📄' },
-          { label: 'Gerenciar planos', href: '/admin/planos', emoji: '📋' },
-        ].map(({ label, href, emoji }) => (
-          <Link key={href} href={href}
-            className="bg-white rounded-xl shadow-sm p-4 flex items-center gap-3 hover:shadow-md transition group">
-            <span className="text-xl">{emoji}</span>
-            <span className="text-sm font-medium text-gray-700 group-hover:text-orange-600 transition">{label}</span>
-          </Link>
-        ))}
       </div>
     </div>
   )
