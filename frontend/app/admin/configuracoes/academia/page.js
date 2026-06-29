@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import { useAuth } from '../../../../hooks/useAuth'
 import { getConfigAcademia, atualizarConfigAcademia } from '../../../../lib/api'
@@ -35,7 +35,20 @@ export default function AcademiaPage() {
   const { token } = useAuth()
   const [loading, setLoading] = useState(true)
   const [salvando, setSalvando] = useState(false)
-  const [msg, setMsg] = useState({ tipo: '', texto: '' })
+  const [toast, setToast] = useState(null)   // { msg, ok }
+  const [toastVisivel, setToastVisivel] = useState(false)
+  const toastTimer = useRef(null)
+
+  function exibirToast(msg, ok = true) {
+    clearTimeout(toastTimer.current)
+    setToast({ msg, ok })
+    // pequeno delay para o CSS de entrada rodar
+    setTimeout(() => setToastVisivel(true), 10)
+    toastTimer.current = setTimeout(() => {
+      setToastVisivel(false)
+      setTimeout(() => setToast(null), 300) // aguarda animação de saída
+    }, 4000)
+  }
 
   const [dados, setDados] = useState({ nome: '', cnpj: '', telefone: '', email: '', endereco: '' })
   const [horarios, setHorarios] = useState(() =>
@@ -69,7 +82,7 @@ export default function AcademiaPage() {
           })
         }
       } catch (err) {
-        setMsg({ tipo: 'erro', texto: err.message })
+        exibirToast(err.message, false)
       }
       setLoading(false)
     }
@@ -83,16 +96,15 @@ export default function AcademiaPage() {
   async function salvar(e) {
     e.preventDefault()
     setSalvando(true)
-    setMsg({ tipo: '', texto: '' })
     try {
       await atualizarConfigAcademia(token, {
         ...dados,
         horarios,
         permissoes_recepcionista: permissoesRecep,
       })
-      setMsg({ tipo: 'ok', texto: 'Configurações da academia salvas.' })
+      exibirToast('Configurações da academia salvas.')
     } catch (err) {
-      setMsg({ tipo: 'erro', texto: err.message })
+      exibirToast(err.message, false)
     }
     setSalvando(false)
   }
@@ -197,13 +209,20 @@ export default function AcademiaPage() {
           <button type="submit" className={btn} style={btnStyle} disabled={salvando}>
             {salvando ? 'Salvando...' : 'Salvar alterações'}
           </button>
-          {msg.texto && (
-            <p className={`text-sm rounded-lg px-3 py-2 ${msg.tipo === 'erro' ? 'text-red-600 bg-red-50' : 'text-green-700 bg-green-50'}`}>
-              {msg.texto}
-            </p>
-          )}
         </div>
       </form>
+
+      {/* Toast topo-direito com slide-in da direita */}
+      {toast && (
+        <div
+          className={`fixed top-5 right-5 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg text-sm font-medium text-white max-w-xs transition-all duration-300 ${
+            toast.ok ? 'bg-green-500' : 'bg-red-500'
+          } ${toastVisivel ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-8'}`}
+        >
+          <span>{toast.ok ? '✓' : '✕'}</span>
+          <span>{toast.msg}</span>
+        </div>
+      )}
     </div>
   )
 }

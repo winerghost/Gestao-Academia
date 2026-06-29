@@ -16,7 +16,7 @@ from datetime import date
 from typing import Annotated, Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator, model_validator
 
 # Regex de e-mail propositalmente simples: a validação forte fica a cargo do
 # Supabase Auth. Aqui só barramos lixo óbvio.
@@ -248,12 +248,17 @@ class PermissoesRecepcionistaSchema(StrictModel):
 
 
 class AcademiaConfigSchema(StrictModel):
-    """Atualização da configuração da academia (todos os campos opcionais)."""
-    nome: Annotated[OptStr, Field(max_length=120)] = None
-    cnpj: Annotated[OptStr, Field(max_length=18)] = None
-    telefone: Annotated[OptStr, Field(max_length=20)] = None
-    email: Annotated[OptStr, Field(max_length=254, pattern=_EMAIL_RE)] = None
-    endereco: Annotated[OptStr, Field(max_length=300)] = None
+    """Atualização da configuração da academia (todos os campos opcionais).
+
+    Usa model_validator(mode='before') para converter strings vazias em None
+    antes da validação — necessário porque Annotated[OptStr, Field(max_length=X)]
+    causa TypeError quando BeforeValidator produz None e max_length tenta len(None).
+    """
+    nome: Optional[str] = Field(None, max_length=120)
+    cnpj: Optional[str] = Field(None, max_length=18)
+    telefone: Optional[str] = Field(None, max_length=20)
+    email: Optional[str] = Field(None, max_length=254, pattern=_EMAIL_RE)
+    endereco: Optional[str] = Field(None, max_length=300)
     # Horários por dia: { "seg": {abre, fecha, fechado}, ... }
     horarios: Optional[dict[Literal["seg", "ter", "qua", "qui", "sex", "sab", "dom"], HorarioDiaSchema]] = None
     notif_lembrete_ativo: Optional[bool] = None
@@ -261,6 +266,16 @@ class AcademiaConfigSchema(StrictModel):
     notif_atraso_ativo: Optional[bool] = None
     # Permissões opcionais concedidas ao cargo Recepcionista.
     permissoes_recepcionista: Optional[PermissoesRecepcionistaSchema] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _strings_vazias_para_none(cls, data):
+        if isinstance(data, dict):
+            return {
+                k: (None if isinstance(v, str) and not v.strip() else v)
+                for k, v in data.items()
+            }
+        return data
 
 
 # ── Avaliações físicas ─────────────────────────────────────────────────────────

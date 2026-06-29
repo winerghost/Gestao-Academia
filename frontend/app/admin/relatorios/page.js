@@ -57,9 +57,14 @@ export default function RelatoriosPage() {
   const { token } = useAuth()
   const [loading, setLoading] = useState(true)
   const [carregando, setCarregando] = useState({})
-  const [erro, setErro] = useState('')
   const [userTipo, setUserTipo] = useState('')
   const [permsRecep, setPermsRecep] = useState({})
+  const [toast, setToast] = useState(null)
+
+  function exibirToast(msg, ok = true) {
+    setToast({ msg, ok })
+    setTimeout(() => setToast(null), 5000)
+  }
 
   useEffect(() => {
     if (!token) return
@@ -67,7 +72,19 @@ export default function RelatoriosPage() {
       try {
         const [me, config] = await Promise.all([getMe(token), getConfigAcademia(token)])
         setUserTipo(me.tipo)
-        setPermsRecep(config.permissoes_recepcionista || {})
+        const perms = config.permissoes_recepcionista || {}
+        setPermsRecep(perms)
+        // Avisa sobre relatórios bloqueados via toast logo ao carregar
+        if (me.tipo === 'recepcionista') {
+          const bloqueados = TODOS_RELATORIOS.filter(r => r.permCampo && !perms[r.permCampo])
+          if (bloqueados.length > 0) {
+            const nomes = bloqueados.map(r => r.titulo).join(' e ')
+            exibirToast(
+              `${nomes} ${bloqueados.length === 1 ? 'está restrito' : 'estão restritos'} ao Administrador. Solicite acesso em Configurações → Academia.`,
+              false
+            )
+          }
+        }
       } catch { /* layout já trata sessão */ }
       setLoading(false)
     }
@@ -76,24 +93,19 @@ export default function RelatoriosPage() {
 
   async function baixar(endpoint, formato) {
     setCarregando(l => ({ ...l, [endpoint]: true }))
-    setErro('')
     try {
       await downloadRelatorio(token, `${endpoint}?formato=${formato}`)
     } catch (err) {
-      setErro(err.message)
+      exibirToast(err.message, false)
     }
     setCarregando(l => ({ ...l, [endpoint]: false }))
   }
 
   const relatorios = TODOS_RELATORIOS.filter(r => {
     if (userTipo === 'admin') return true
-    if (!r.permCampo) return true // sem restrição
+    if (!r.permCampo) return true
     return !!permsRecep[r.permCampo]
   })
-
-  const bloqueados = userTipo === 'recepcionista'
-    ? TODOS_RELATORIOS.filter(r => r.permCampo && !permsRecep[r.permCampo])
-    : []
 
   if (loading) return <p className="text-gray-400">Carregando...</p>
 
@@ -103,12 +115,6 @@ export default function RelatoriosPage() {
         <h1 className="text-2xl font-bold text-gray-800">Relatórios</h1>
         <p className="text-sm text-gray-500 mt-1">Exporte os dados da academia em PDF ou Excel</p>
       </div>
-
-      {erro && (
-        <div className="mb-4 text-sm text-red-500 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
-          {erro}
-        </div>
-      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
         {relatorios.map(r => (
@@ -123,25 +129,18 @@ export default function RelatoriosPage() {
         ))}
       </div>
 
-      {/* Aviso quando recepcionista tem relatórios bloqueados */}
-      {bloqueados.length > 0 && (
-        <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 mb-4">
-          <p className="text-sm text-amber-700">
-            <strong>Acesso restrito:</strong>{' '}
-            {bloqueados.map(r => r.titulo).join(' e ')}{' '}
-            {bloqueados.length === 1 ? 'está disponível' : 'estão disponíveis'} apenas para Administradores.
-            Solicite ao administrador em{' '}
-            <strong>Configurações → Academia</strong>.
-          </p>
-        </div>
-      )}
-
       <div className="bg-orange-50 border border-orange-100 rounded-xl p-4">
         <p className="text-sm text-orange-700">
           <strong>Dica:</strong> O PDF é ideal para impressão e apresentações.
           O Excel permite filtros adicionais e análises personalizadas.
         </p>
       </div>
+
+      {toast && (
+        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 px-5 py-3 rounded-xl shadow-lg text-sm font-medium text-white z-50 max-w-sm text-center transition-all ${toast.ok ? 'bg-green-500' : 'bg-red-500'}`}>
+          {toast.msg}
+        </div>
+      )}
     </div>
   )
 }
