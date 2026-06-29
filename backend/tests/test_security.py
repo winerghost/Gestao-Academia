@@ -515,7 +515,10 @@ def test_toda_rota_protegida_exige_token(client):
     por valores válidos para que o Flask roteie corretamente a requisição.
     """
     app = client.application
-    publicas = {("auth.login", "POST")}  # única rota sem token
+    publicas = {
+        ("auth.login", "POST"),  # login: único endpoint sem token
+        ("health",     "GET"),   # /health: healthcheck público para Docker/monitoramento
+    }
 
     def concretizar(regra: str) -> str:
         def repl(m):

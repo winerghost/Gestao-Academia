@@ -1,15 +1,15 @@
 /** @type {import('next').NextConfig} */
 
-// Cabeçalhos de segurança aplicados a todas as rotas servidas pelo Next.
-// Estes são "seguros" — não quebram a hidratação do React:
-//   - X-Frame-Options: DENY        → impede clickjacking (app em <iframe>).
+// Cabeçalhos de segurança aplicados a todas as rotas pelo Next (incluindo
+// assets estáticos que o proxy.js não intercepta).
+// A Content-Security-Policy com nonce é gerada por request em proxy.js —
+// mais segura que um valor estático, porque impede scripts inline externos.
+// Estes headers complementam o CSP para assets estáticos:
+//   - X-Frame-Options: DENY        → impede clickjacking (redundante com
+//                                    frame-ancestors do CSP, mas defense-in-depth).
 //   - X-Content-Type-Options       → impede MIME sniffing.
-//   - Referrer-Policy              → não vaza a URL completa para terceiros.
+//   - Referrer-Policy              → não vaza URL completa para terceiros.
 //   - Strict-Transport-Security    → força HTTPS (ignorado em http/localhost).
-// OBS.: a Content-Security-Policy (mitigação central de XSS / roubo de token)
-// NÃO está aqui de propósito: uma CSP estrita no App Router precisa de nonce
-// via middleware, senão quebra os scripts inline de hidratação. Fica como
-// tarefa dedicada (a ser testada no navegador).
 const securityHeaders = [
   { key: 'X-Frame-Options', value: 'DENY' },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
@@ -21,6 +21,10 @@ const securityHeaders = [
 ]
 
 const nextConfig = {
+  // standalone: gera um bundle auto-suficiente em .next/standalone/
+  // com um server.js mínimo — ideal para Docker (imagem ~3× menor).
+  output: 'standalone',
+
   async headers() {
     return [
       {

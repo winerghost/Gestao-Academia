@@ -1,0 +1,134 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Gestão de Academias — Docker Compose (produção)
+#
+# Serviços:
+#   redis    → storage compartilhado do rate limiter (Flask-Limiter) e do
+#              APScheduler lock (evita e-mails duplicados com múltiplos workers)
+#   backend  → Flask via gunicorn (Alpine multi-stage)
+#   frontend → Next.js standalone (Alpine multi-stage)
+#   nginx    → proxy reverso; Cloudflare está na borda (TLS/DNS)
+#
+# Setup rápido na VPS:
+#   1. Copie .env.production.example → .env  e preencha os valores
+#   2. docker compose up -d --build
+#   3. Verifique: docker compose ps  (todos "healthy" ou "running")
+# ═══════════════════════════════════════════════════════════════════════════════
+
+services:
+
+  # ── Redis ────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ── Backend (Flask / gunicorn) ────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      # Supabase
+      SUPABASE_URL:              ${SUPABASE_URL}
+      SUPABASE_ANON_KEY:         ${SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      SUPABASE_JWT_SECRET:       ${SUPABASE_JWT_SECRET:-}
+      # CORS: frontend na mesma origem (nginx roteia /api/ → Flask)
+      ALLOWED_ORIGINS:           ${FRONTEND_URL}
+      # Rate limiting compartilhado entre workers (B-5)
+      RATELIMIT_STORAGE_URI:     redis://redis:6379/0
+      RATELIMIT_DEFAULT:         ${RATELIMIT_DEFAULT:-200 per minute}
+      RATELIMIT_LOGIN:           ${RATELIMIT_LOGIN:-10 per minute;50 per hour}
+      # Avatares
+      AVATAR_BUCKET:             ${AVATAR_BUCKET:-avatars}
+      AVATAR_MAX_BYTES:          ${AVATAR_MAX_BYTES:-4194304}
+      AVATAR_SIZE_PX:            ${AVATAR_SIZE_PX:-512}
+      # E-mail
+      EMAIL_HOST:                ${EMAIL_HOST:-smtp.gmail.com}
+      EMAIL_PORT:                ${EMAIL_PORT:-587}
+      EMAIL_USER:                ${EMAIL_USER}
+      EMAIL_PASSWORD:            ${EMAIL_PASSWORD}
+      EMAIL_FROM:                ${EMAIL_FROM}
+      # Gunicorn
+      WEB_CONCURRENCY:           ${WEB_CONCURRENCY:-2}
+    networks: [internal]
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5000/health | grep -q ok"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ── Frontend (Next.js standalone) ─────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # NEXT_PUBLIC_* são embutidos no bundle em build time
+        NEXT_PUBLIC_SUPABASE_URL:      ${SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+        # /api = prefixo que nginx mapeia para o Flask
+        NEXT_PUBLIC_API_URL:           ${FRONTEND_URL}/api
+    restart: unless-stopped
+    environment:
+      NODE_ENV:  production
+      PORT:      3000
+      HOSTNAME:  0.0.0.0
+    networks: [internal]
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ | grep -q html"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ── Nginx (proxy reverso) ─────────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      # Descomente para HTTPS com certificado Cloudflare Origin:
+      # - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # Certificado Cloudflare Origin (se usar Full SSL):
+      # - ./nginx/ssl/origin.pem:/etc/nginx/ssl/origin.pem:ro
+      # - ./nginx/ssl/origin.key:/etc/nginx/ssl/origin.key:ro
+    networks:
+      - internal
+      - external
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+
+# ── Redes ──────────────────────────────────────────────────────────────────────
+# internal: comunicação entre containers (não exposta ao host)
+# external: nginx ↔ internet (porta 80/443 mapeada acima)
+networks:
+  internal:
+    driver: bridge
+  external:
+    driver: bridge
+
+# ── Volumes ────────────────────────────────────────────────────────────────────
+volumes:
+  redis_data:  # persistência do Redis entre reinícios

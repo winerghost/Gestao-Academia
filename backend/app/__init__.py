@@ -101,6 +101,12 @@ def create_app():
             )
         return resp
 
+    @app.get("/health")
+    def health():
+        # Endpoint público para healthcheck do Docker e monitoramento.
+        # Retorna 200 quando a aplicação está pronta para receber requisições.
+        return jsonify({"status": "ok"})
+
     app.register_blueprint(auth_bp)
     app.register_blueprint(alunos_bp)
     app.register_blueprint(instrutores_bp)

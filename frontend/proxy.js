@@ -21,12 +21,15 @@ export function proxy(request) {
 
   // Origens externas legítimas deste app (derivadas do .env):
   //  - API Flask (fetch de dados)          → connect-src
-  //  - Supabase (auth via supabase-js)     → connect-src
+  //  - Supabase (auth via supabase-js)     → connect-src (HTTP + WSS para Realtime)
   //  - Supabase Storage + Gravatar (fotos) → img-src
   const api = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
   const supabase = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-  const connectSrc = ["'self'", api, supabase].filter(Boolean).join(' ')
-  const imgSrc = ["'self'", 'data:', 'blob:', supabase, 'https://gravatar.com'].filter(Boolean).join(' ')
+  // Supabase Realtime usa WebSocket — troca https:// por wss:// para connect-src
+  const supabaseWs = supabase.replace('https://', 'wss://')
+  const connectSrc = ["'self'", api, supabase, supabaseWs].filter(Boolean).join(' ')
+  // Gravatar pode responder de www.gravatar.com ou secure.gravatar.com
+  const imgSrc = ["'self'", 'data:', 'blob:', supabase, 'https://www.gravatar.com', 'https://secure.gravatar.com'].filter(Boolean).join(' ')
 
   // 'unsafe-eval' só em dev (React usa eval p/ debug; produção não precisa).
   // style-src usa 'unsafe-inline' porque o app usa estilos inline (style={{...}});
