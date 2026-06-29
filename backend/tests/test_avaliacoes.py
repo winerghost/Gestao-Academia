@@ -526,6 +526,41 @@ def test_exportar_pdf(client):
         assert res.data[:4] == b"%PDF"
 
 
+def test_exportar_pdf_instrutor_fora_do_escopo_404(client):
+    # IDOR (A-1): instrutor não pode exportar o PDF de avaliação de aluno que
+    # não é dele. Mesmo guard do GET JSON — devolve 404 sem vazar o registro.
+    with patch("app.avaliacoes.routes.supabase") as mock_supa, \
+         patch("app.avaliacoes.routes._alunos_do_instrutor", return_value=[]), \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth, tipo="instrutor")
+        mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
+            data={**FAKE_AVALIACAO, "alunos": {"cpf": "1", "profiles": {"nome": "João"}}}
+        )
+        res = client.get(
+            "/avaliacoes/00000000-0000-0000-0000-000000000001/pdf",
+            headers=_auth_headers(),
+        )
+        assert res.status_code == 404
+
+
+def test_exportar_pdf_instrutor_seu_aluno_ok(client):
+    # Contraprova: instrutor exporta normalmente o PDF de aluno do seu escopo.
+    with patch("app.avaliacoes.routes.supabase") as mock_supa, \
+         patch("app.avaliacoes.routes._alunos_do_instrutor",
+               return_value=[FAKE_AVALIACAO["aluno_id"]]), \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth, tipo="instrutor")
+        mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
+            data={**FAKE_AVALIACAO, "alunos": {"cpf": "1", "profiles": {"nome": "João"}}}
+        )
+        res = client.get(
+            "/avaliacoes/00000000-0000-0000-0000-000000000001/pdf",
+            headers=_auth_headers(),
+        )
+        assert res.status_code == 200
+        assert res.data[:4] == b"%PDF"
+
+
 def test_exportar_pdf_nome_com_markup(client):
     # Nome com caracteres de markup XML não pode quebrar a geração do PDF
     with patch("app.avaliacoes.routes.supabase") as mock_supa, \

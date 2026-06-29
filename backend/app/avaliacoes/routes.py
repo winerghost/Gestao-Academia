@@ -300,6 +300,14 @@ def exportar_pdf(avaliacao_id):
         return jsonify({"error": "Avaliação não encontrada"}), 404
 
     av = result.data
+
+    # Mesmo guard de ownership do GET JSON: instrutor só exporta avaliações dos
+    # seus alunos. Sem isto, como a rota usa a service_role (ignora RLS), um
+    # instrutor exportaria o PDF de qualquer avaliação (IDOR + vazamento de PII).
+    # Devolve 404 para não revelar a existência do registro.
+    if g.user_tipo == "instrutor" and av["aluno_id"] not in _alunos_do_instrutor(g.user_id):
+        return jsonify({"error": "Avaliação não encontrada"}), 404
+
     alunos = av.get("alunos") or {}
     profiles = alunos.get("profiles") or {}
     nome_aluno = profiles.get("nome") or "—"

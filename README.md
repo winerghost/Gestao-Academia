@@ -8,10 +8,13 @@ Sistema completo de gestão para academias, desenvolvido com foco em controle fi
 
 ### Painel Administrativo
 - **Dashboard** com KPIs em tempo real: alunos ativos, inadimplentes, receita do mês, taxa de inadimplência e distribuição por plano
-- **Gestão de alunos** com cadastro, edição, filtros por status (ativo, inativo, inadimplente) e busca por nome ou CPF
+- **Gestão de alunos** com cadastro, edição, foto (upload, webcam ou Gravatar), filtros por status (ativo, inativo, inadimplente) e busca por nome ou CPF
+- **Gestão de vínculos de planos** por aluno: vincular, editar, cancelar e excluir vínculos, com bloqueio de plano ativo duplicado e detalhamento das mensalidades geradas
 - **Gestão de mensalidades** com filtros por status e mês, registro de pagamento manual e cálculo automático de juros
+- **Avaliações físicas** com medidas, dobras, diâmetros e exportação em PDF
 - **Gestão de instrutores** com cadastro, edição e vinculação a planos
 - **Gestão de planos** com ativação/desativação e edição inline
+- **Configurações** de usuários do sistema (tipo/permissão, ativação) e dados da academia
 - **Relatórios exportáveis** em PDF e Excel (alunos, financeiro, inadimplência)
 - **Notificações por e-mail** automáticas: aviso de vencimento (1 dia antes) e cobrança de mensalidades em atraso
 
@@ -19,6 +22,7 @@ Sistema completo de gestão para academias, desenvolvido com foco em controle fi
 - Visualização de dados pessoais e status da conta
 - Histórico completo de mensalidades com detalhamento de juros
 - Histórico de frequência (quando habilitado)
+- Avaliações físicas, ficha de treino e avisos
 
 ### Regras de Negócio
 - Mensalidades geradas **automaticamente** a cada ciclo de plano ativo
@@ -26,6 +30,7 @@ Sistema completo de gestão para academias, desenvolvido com foco em controle fi
 - Aluno marcado como **inadimplente** automaticamente 1 dia após o vencimento
 - Status restaurado para **ativo** ao quitar todas as pendências
 - Controle de frequência **opcional** e configurável por aluno
+- **Unicidade garantida**: um aluno não pode ter o mesmo plano ativo duplicado e não há mensalidades duplicadas por vínculo/vencimento — validado no backend e por índices únicos parciais no banco (migration `011`)
 
 ---
 
@@ -35,12 +40,14 @@ Sistema completo de gestão para academias, desenvolvido com foco em controle fi
 |--------|-----------|
 | Backend | Python 3.11 + Flask 3.0 |
 | Frontend | Next.js (App Router) + Tailwind CSS v4 |
-| Banco de dados |  (PostgreSQL) |
-| Autenticação |  Auth (JWT) |
+| Banco de dados | Supabase (PostgreSQL) com RLS |
+| Autenticação | Supabase Auth (JWT) |
+| Imagens / avatares | Pillow + Supabase Storage |
 | Agendamento | APScheduler |
 | PDF | ReportLab |
 | Excel | openpyxl |
 | E-mail | Gmail SMTP (smtplib) |
+| Validação | Pydantic |
 | Testes | pytest + unittest.mock |
 
 ---
@@ -51,16 +58,19 @@ Sistema completo de gestão para academias, desenvolvido com foco em controle fi
 gestao-academia/
 ├── backend/
 │   ├── app/
-│   │   ├── auth/          # Autenticação e middleware JWT
-│   │   ├── alunos/        # CRUD de alunos e vínculos com planos
+│   │   ├── auth/          # Autenticação, middleware JWT e avatares
+│   │   ├── alunos/        # CRUD de alunos e gestão de vínculos com planos
 │   │   ├── instrutores/   # CRUD de instrutores e vínculos com planos
 │   │   ├── planos/        # CRUD de planos
 │   │   ├── mensalidades/  # Pagamentos, jobs de geração e inadimplência
+│   │   ├── avaliacoes/    # Avaliações físicas e exportação PDF
+│   │   ├── configuracoes/ # Usuários do sistema e dados da academia
 │   │   ├── dashboard/     # KPIs e indicadores
 │   │   ├── relatorios/    # Exportação PDF e Excel
 │   │   ├── notificacoes/  # E-mails automáticos via SMTP
 │   │   └── portal/        # Endpoints exclusivos do aluno
-│   ├── tests/             # Testes unitários (47 casos)
+│   ├── migrations/        # Migrations SQL versionadas (001–011)
+│   ├── tests/             # Testes unitários (185 casos)
 │   └── requirements.txt
 ├── frontend/
 │   ├── app/
@@ -144,7 +154,7 @@ A aplicação estará disponível em `http://localhost:3000`.
 
 ### 5. Banco de dados
 
-Execute as migrations no **SQL Editor** do Supabase para criar as tabelas, enums, RLS policies e triggers. Consulte o `PLANEJAMENTO.md` para o schema completo.
+Execute as migrations da pasta `backend/migrations/` (arquivos `001` a `011`), **em ordem**, no **SQL Editor** do Supabase para criar tabelas, enums, RLS policies, triggers e os índices de unicidade. As migrations são versionadas e idempotentes — rode-as manualmente, pois o projeto não possui runner automático.
 
 ---
 
@@ -156,6 +166,11 @@ Execute as migrations no **SQL Editor** do Supabase para criar as tabelas, enums
 | POST | `/auth/login` | Login com e-mail e senha |
 | POST | `/auth/logout` | Logout |
 | GET | `/auth/me` | Perfil do usuário autenticado |
+| PUT | `/auth/me` | Atualizar perfil |
+| POST | `/auth/change-password` | Alterar senha |
+| POST | `/auth/me/avatar` | Enviar foto de perfil |
+| DELETE | `/auth/me/avatar` | Remover foto de perfil |
+| POST | `/auth/me/avatar/gravatar` | Usar Gravatar como foto |
 
 ### Alunos
 | Método | Endpoint | Descrição |
@@ -164,7 +179,12 @@ Execute as migrations no **SQL Editor** do Supabase para criar as tabelas, enums
 | POST | `/alunos` | Cadastrar aluno |
 | GET | `/alunos/:id` | Buscar aluno |
 | PUT | `/alunos/:id` | Atualizar aluno |
-| POST | `/alunos/:id/planos` | Vincular plano ao aluno |
+| PATCH | `/alunos/:id/status` | Alterar status do aluno |
+| GET | `/alunos/:id/planos` | Listar vínculos de planos do aluno |
+| POST | `/alunos/:id/planos` | Vincular plano (bloqueia plano ativo duplicado) |
+| GET | `/alunos/:id/planos/:vinculo_id` | Detalhe do vínculo + mensalidades |
+| PUT | `/alunos/:id/planos/:vinculo_id` | Editar vínculo (datas/status) |
+| DELETE | `/alunos/:id/planos/:vinculo_id` | Cancelar vínculo (ou `?permanente=true` para excluir) |
 
 ### Instrutores
 | Método | Endpoint | Descrição |
@@ -188,7 +208,29 @@ Execute as migrations no **SQL Editor** do Supabase para criar as tabelas, enums
 | Método | Endpoint | Descrição |
 |--------|----------|-----------|
 | GET | `/mensalidades` | Listar (filtros: `status`, `mes`, `aluno_id`) |
+| GET | `/mensalidades/:id` | Buscar mensalidade |
 | POST | `/mensalidades/:id/pagar` | Registrar pagamento |
+
+### Avaliações Físicas
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| GET | `/avaliacoes` | Listar (paginado: `limit`, `offset`) |
+| POST | `/avaliacoes` | Criar avaliação |
+| GET | `/avaliacoes/:id` | Buscar avaliação |
+| PUT | `/avaliacoes/:id` | Atualizar avaliação |
+| DELETE | `/avaliacoes/:id` | Excluir avaliação |
+| GET | `/avaliacoes/:id/pdf` | Exportar avaliação em PDF |
+
+### Configurações
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| GET | `/configuracoes/usuarios` | Listar usuários do sistema |
+| PATCH | `/configuracoes/usuarios/:id/tipo` | Alterar tipo/permissão |
+| PATCH | `/configuracoes/usuarios/:id/status` | Ativar/desativar usuário |
+| POST | `/configuracoes/usuarios/:id/avatar` | Definir foto de outro usuário |
+| DELETE | `/configuracoes/usuarios/:id/avatar` | Remover foto de outro usuário |
+| GET | `/configuracoes/academia` | Dados da academia |
+| PUT | `/configuracoes/academia` | Atualizar dados da academia |
 
 ### Dashboard
 | Método | Endpoint | Descrição |
@@ -210,6 +252,9 @@ Execute as migrations no **SQL Editor** do Supabase para criar as tabelas, enums
 | GET | `/portal/me` | Dados do aluno autenticado |
 | GET | `/portal/mensalidades` | Mensalidades do aluno |
 | GET | `/portal/frequencias` | Histórico de frequência |
+| GET | `/portal/avaliacoes` | Avaliações físicas do aluno |
+| GET | `/portal/treino` | Ficha de treino do aluno |
+| GET | `/portal/avisos` | Avisos direcionados ao aluno |
 
 ---
 
@@ -220,7 +265,7 @@ cd backend
 python -m pytest -v
 ```
 
-A suíte cobre **47 casos de teste** distribuídos entre autenticação, CRUD, regras de negócio (juros, inadimplência), notificações e portal do aluno.
+A suíte cobre **185 casos de teste** distribuídos entre autenticação, avatares, CRUD, gestão de vínculos de planos, unicidade de planos/mensalidades, avaliações físicas, regras de negócio (juros, inadimplência), configurações, notificações e portal do aluno.
 
 ---
 
@@ -240,8 +285,24 @@ A suíte cobre **47 casos de teste** distribuídos entre autenticação, CRUD, r
 - Autenticação via **JWT validado pelo Supabase Auth** em todas as rotas protegidas
 - **RLS (Row Level Security)** no PostgreSQL por tipo de usuário
 - **Service Role Key** usada exclusivamente no backend (nunca exposta ao cliente)
-- Validação de dados nas duas pontas: frontend e backend
+- **Rate limiting** (Flask-Limiter) nas rotas sensíveis, como o login
+- **CORS** restrito às origens configuradas
+- Validação de dados nas duas pontas: frontend (React) e backend (Pydantic)
 - Variáveis sensíveis isoladas em `.env` e nunca commitadas
+
+---
+
+## Deploy / Produção
+
+O deploy de produção roda em uma **VPS com Docker**, orquestrado por um **`docker-compose.yml`** que builda as imagens a partir dos `Dockerfile` de cada serviço (imagens base **Alpine** leves, multi-stage):
+
+- **Backend** Flask servido por **gunicorn** (não o dev server)
+- **Frontend** Next.js em modo produção (`next build && next start`)
+- **Supabase** é gerenciado (banco na nuvem) — fica **fora** do compose, conectado via URL + chaves no `.env`
+
+Na borda, um **Nginx** na VPS atua como proxy reverso apontando para os containers, e o **Cloudflare** está na frente (DNS + TLS). Lembre-se de configurar `ProxyFix` no Flask para que `X-Forwarded-For`/`X-Forwarded-Proto` sejam lidos corretamente na cadeia Cloudflare → Nginx → container.
+
+> Os artefatos de produção (`docker-compose.yml`, `Dockerfile`s) são montados sob demanda — ainda não versionados neste estágio.
 
 ---
 
@@ -255,7 +316,12 @@ A suíte cobre **47 casos de teste** distribuídos entre autenticação, CRUD, r
 - [x] Fase 6 — Relatórios PDF e Excel
 - [x] Fase 7 — Notificações por e-mail
 - [x] Fase 8 — Portal do aluno (Next.js)
-- [ ] Fase 9 — Integração de pagamentos (Stripe / PagSeguro)
+- [x] Fase 9 — Avaliações físicas, fichas de treino e avisos
+- [x] Fase 10 — Avatares (upload, webcam e Gravatar)
+- [x] Fase 11 — Configurações (usuários do sistema e academia)
+- [x] Fase 12 — Unicidade de planos/mensalidades (backend + índices no banco)
+- [ ] Fase 13 — Containerização e deploy em produção (Docker Compose + Nginx)
+- [ ] Fase 14 — Integração de pagamentos (Stripe / PagSeguro)
 
 ---
 
