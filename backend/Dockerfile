@@ -39,4 +39,5 @@ EXPOSE 5000
 
 # gunicorn lê WEB_CONCURRENCY, BIND e preload_app do gunicorn.conf.py.
 # post_fork reinicia o cliente Supabase em cada worker (pool de conexões limpo).
-CMD ["gunicorn", "-c", "gunicorn.conf.py", "run:app"]
+# Usa 'python -m gunicorn' para evitar permission denied ao executar /root/.local/bin/gunicorn.
+CMD ["python", "-m", "gunicorn", "-c", "gunicorn.conf.py", "run:app"]

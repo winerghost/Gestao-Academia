@@ -1,6 +1,7 @@
 flask==3.0.3
 flask-cors==4.0.1
 Flask-Limiter[redis]==4.1.1
+gunicorn==23.0.0
 pydantic==2.13.4
 python-dotenv==1.0.1
 supabase==2.5.0
