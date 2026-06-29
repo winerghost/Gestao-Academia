@@ -13,7 +13,7 @@ import { NextResponse } from 'next/server'
 //     console. Cada violação indica uma origem que falta liberar abaixo.
 //   - Quando o console estiver limpo, troque REPORT_ONLY para false para
 //     PASSAR A BLOQUEAR de verdade.
-const REPORT_ONLY = true
+const REPORT_ONLY = false
 
 export function proxy(request) {
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64')

@@ -38,10 +38,10 @@ def login(payload: LoginSchema):
         supabase.table("profiles")
         .select("*")
         .eq("id", response.user.id)
-        .single()
+        .maybe_single()
         .execute()
     )
-    if profile.data and not profile.data.get("ativo", True):
+    if profile and profile.data and not profile.data.get("ativo", True):
         return jsonify({"error": "Conta desativada. Procure o administrador."}), 403
 
     return jsonify({

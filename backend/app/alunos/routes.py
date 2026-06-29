@@ -249,10 +249,10 @@ def vincular_plano(aluno_id, payload: VincularPlanoAlunoSchema):
         supabase.table("planos")
         .select("valor")
         .eq("id", str(payload.plano_id))
-        .single()
+        .maybe_single()
         .execute()
     )
-    if not plano.data:
+    if not plano or not plano.data:
         return jsonify({"error": "Plano não encontrado"}), 404
 
     # Regra de negócio: um aluno não pode ter o MESMO plano ativo mais de uma

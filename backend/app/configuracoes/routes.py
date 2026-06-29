@@ -27,11 +27,14 @@ _CONFIG_ID = 1
 
 
 def _ler_config():
+    # .maybe_single() em vez de .single(): se a tabela estiver vazia
+    # (deployment antes da migration), .single() lançaria PGRST116 → 500
+    # com detalhe interno. .maybe_single() devolve None de forma limpa.
     return (
         supabase.table("academia_config")
         .select("*")
         .eq("id", _CONFIG_ID)
-        .single()
+        .maybe_single()
         .execute()
     )
 
@@ -51,7 +54,7 @@ def listar_usuarios():
     )
     profiles = {p["id"]: p for p in (profiles_result.data or [])}
 
-    auth_users = supabase.auth.admin.list_users()
+    auth_users = supabase.auth.admin.list_users(page=1, per_page=1000)
     user_list = auth_users if isinstance(auth_users, list) else []
 
     result = []
@@ -139,7 +142,7 @@ def criar_usuario(payload: CriarUsuarioSchema):
     }), 201
 
 
-@configuracoes_bp.delete("/usuarios/<user_id>")
+@configuracoes_bp.delete("/usuarios/<uuid:user_id>")
 @require_role("admin")
 def excluir_usuario(user_id):
     """Exclui permanentemente um usuário do sistema (somente admin).
@@ -182,10 +185,10 @@ def excluir_usuario(user_id):
     return "", 204
 
 
-@configuracoes_bp.post("/usuarios/<user_id>/reset-senha")
+@configuracoes_bp.post("/usuarios/<uuid:user_id>/reset-senha")
 @require_role("admin")
 @validate_body(ResetSenhaAdminSchema)
-def reset_senha_usuario(user_id: str, payload: ResetSenhaAdminSchema):
+def reset_senha_usuario(user_id, payload: ResetSenhaAdminSchema):
     """Admin redefine a senha de qualquer usuário (somente admin).
 
     O admin não precisa conhecer a senha atual — usa a Admin API do Supabase.
@@ -206,18 +209,19 @@ def reset_senha_usuario(user_id: str, payload: ResetSenhaAdminSchema):
     return "", 204
 
 
-@configuracoes_bp.patch("/usuarios/<user_id>/tipo")
+@configuracoes_bp.patch("/usuarios/<uuid:user_id>/tipo")
 @require_role("admin")
 @validate_body(UserTipoSchema)
-def atualizar_tipo_usuario(user_id: str, payload: UserTipoSchema):
+def atualizar_tipo_usuario(user_id, payload: UserTipoSchema):
     """Altera o papel de um usuário (somente admin; não pode alterar o próprio)."""
-    if user_id == str(g.user_id):
+    uid = str(user_id)
+    if uid == str(g.user_id):
         return jsonify({"error": "Você não pode alterar seu próprio tipo"}), 400
 
     result = (
         supabase.table("profiles")
         .update({"tipo": payload.tipo})
-        .eq("id", user_id)
+        .eq("id", uid)
         .execute()
     )
     if not result.data:
@@ -230,31 +234,32 @@ def atualizar_tipo_usuario(user_id: str, payload: UserTipoSchema):
         existing = (
             supabase.table("instrutores")
             .select("id")
-            .eq("profile_id", user_id)
+            .eq("profile_id", uid)
             .maybe_single()
             .execute()
         )
         if not existing.data:
-            supabase.table("instrutores").insert({"profile_id": user_id}).execute()
+            supabase.table("instrutores").insert({"profile_id": uid}).execute()
 
     return jsonify(result.data[0])
 
 
-@configuracoes_bp.patch("/usuarios/<user_id>/status")
+@configuracoes_bp.patch("/usuarios/<uuid:user_id>/status")
 @require_role("admin")
 @validate_body(UserStatusSchema)
-def atualizar_status_usuario(user_id: str, payload: UserStatusSchema):
+def atualizar_status_usuario(user_id, payload: UserStatusSchema):
     """Ativa/desativa um usuário (somente admin; não pode desativar a si mesmo).
 
     Ao desativar um aluno: bloqueado se houver mensalidades em atraso.
     Reativação: sempre permitida, independentemente do histórico.
     """
-    if user_id == str(g.user_id):
+    uid = str(user_id)
+    if uid == str(g.user_id):
         return jsonify({"error": "Você não pode desativar sua própria conta"}), 400
 
     # Ao desativar, verifica débitos pendentes (apenas para alunos).
     if not payload.ativo:
-        sit = _mensalidades_aluno(user_id)
+        sit = _mensalidades_aluno(uid)
         if sit == "atrasada":
             return jsonify({
                 "error": "O aluno possui mensalidades em atraso. "
@@ -264,7 +269,7 @@ def atualizar_status_usuario(user_id: str, payload: UserStatusSchema):
     result = (
         supabase.table("profiles")
         .update({"ativo": payload.ativo})
-        .eq("id", user_id)
+        .eq("id", uid)
         .execute()
     )
     if not result.data:

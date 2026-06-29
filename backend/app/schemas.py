@@ -48,7 +48,7 @@ def _limpar_cpf(v: str) -> str:
 
 
 Email = Annotated[str, Field(min_length=3, max_length=254, pattern=_EMAIL_RE)]
-Senha = Annotated[str, Field(min_length=6, max_length=128)]
+Senha = Annotated[str, Field(min_length=8, max_length=128)]
 Nome = Annotated[str, Field(min_length=1, max_length=120)]
 
 

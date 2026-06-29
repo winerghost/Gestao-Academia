@@ -3,7 +3,7 @@ from xml.sax.saxutils import escape as xml_escape
 from flask import Blueprint, request, jsonify, send_file, g, current_app
 from ..supabase_client import supabase
 from ..auth.middleware import require_auth, require_role
-from ..validation import data_iso_valida, validate_body
+from ..validation import data_iso_valida, uuid_valido, validate_body
 from ..schemas import AvaliacaoCreateSchema, AvaliacaoUpdateSchema
 
 avaliacoes_bp = Blueprint("avaliacoes", __name__, url_prefix="/avaliacoes")
@@ -74,6 +74,11 @@ def listar():
     if limit not in _LIMITES_VALIDOS:
         limit = 25
     offset = max(0, offset)
+
+    # aluno_id: UUID na coluna do banco. Valor inválido → erro de cast do Postgres
+    # exposto pelo PostgREST como 400 com texto interno. Validamos antes.
+    if aluno_id is not None and not uuid_valido(aluno_id):
+        return jsonify({"error": "Parâmetro 'aluno_id' deve ser um UUID válido"}), 400
 
     # Datas malformadas viram erro de cast no Postgres (500). Valida antes.
     for rotulo, valor in (("data_inicio", data_inicio), ("data_fim", data_fim)):
@@ -194,10 +199,10 @@ def buscar(avaliacao_id):
         supabase.table("avaliacoes")
         .select("*, alunos(id, cpf, profiles(nome, telefone))")
         .eq("id", str(avaliacao_id))
-        .single()
+        .maybe_single()
         .execute()
     )
-    if not result.data:
+    if not result or not result.data:
         return jsonify({"error": "Avaliação não encontrada"}), 404
 
     avaliacao = result.data
@@ -212,10 +217,10 @@ def buscar(avaliacao_id):
             supabase.table("profiles")
             .select("nome")
             .eq("id", avaliacao["instrutor_id"])
-            .single()
+            .maybe_single()
             .execute()
         )
-        avaliacao["instrutor_nome"] = inst.data["nome"] if inst.data else None
+        avaliacao["instrutor_nome"] = (inst.data or {}).get("nome") if inst else None
 
     return jsonify(avaliacao)
 
@@ -243,10 +248,10 @@ def atualizar(avaliacao_id, payload: AvaliacaoUpdateSchema):
         supabase.table("avaliacoes")
         .select("aluno_id, peso_kg, altura_cm")
         .eq("id", str(avaliacao_id))
-        .single()
+        .maybe_single()
         .execute()
     )
-    if not atual.data:
+    if not atual or not atual.data:
         return jsonify({"error": "Avaliação não encontrada"}), 404
 
     # Instrutor só edita avaliações dos seus alunos
@@ -293,10 +298,10 @@ def exportar_pdf(avaliacao_id):
         supabase.table("avaliacoes")
         .select("*, alunos(cpf, profiles(nome))")
         .eq("id", str(avaliacao_id))
-        .single()
+        .maybe_single()
         .execute()
     )
-    if not result.data:
+    if not result or not result.data:
         return jsonify({"error": "Avaliação não encontrada"}), 404
 
     av = result.data

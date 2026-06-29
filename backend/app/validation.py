@@ -5,6 +5,7 @@ listagens/relatórios: um valor malformado vindo da URL não pode chegar ao
 PostgREST e virar um 500 (que ainda vazaria detalhes do banco).
 """
 import re
+import uuid as _uuid_mod
 from datetime import date
 from functools import wraps
 
@@ -18,6 +19,23 @@ _ANO_MES_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 def mes_valido(mes: str | None) -> bool:
     """True se `mes` está no formato AAAA-MM (ex.: '2026-06')."""
     return bool(mes) and bool(_ANO_MES_RE.match(mes))
+
+
+def uuid_valido(valor: str | None) -> bool:
+    """True se `valor` é um UUID v4 válido (ex.: '00000000-0000-0000-0000-000000000001').
+
+    Colunas UUID no Postgres lançam um erro de cast (SQLSTATE 22P02) se
+    receberem um valor que não seja UUID. O PostgREST devolve esse erro como
+    400 com o texto do Postgres, que revela o tipo da coluna — um vazamento
+    desnecessário. Validar aqui garante um 400 com mensagem controlada.
+    """
+    if not valor:
+        return False
+    try:
+        _uuid_mod.UUID(valor)
+        return True
+    except ValueError:
+        return False
 
 
 def data_iso_valida(valor: str | None) -> bool:

@@ -17,14 +17,14 @@ _CONFIG_PADRAO = {
 def _config_notificacoes() -> dict:
     """Lê os parâmetros de notificação da configuração da academia."""
     try:
-        data = (
+        result = (
             supabase.table("academia_config")
             .select("notif_lembrete_ativo, notif_dias_antes, notif_atraso_ativo")
             .eq("id", 1)
-            .single()
+            .maybe_single()
             .execute()
-            .data
         )
+        data = result.data if result else None
         return data or _CONFIG_PADRAO
     except Exception:
         logger.warning("Não foi possível ler academia_config; usando padrões")

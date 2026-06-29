@@ -41,10 +41,10 @@ def buscar(plano_id):
         supabase.table("planos")
         .select("*, instrutor_planos(instrutores(profiles(nome)))")
         .eq("id", str(plano_id))
-        .single()
+        .maybe_single()
         .execute()
     )
-    if not result.data:
+    if not result or not result.data:
         return jsonify({"error": "Plano não encontrado"}), 404
     return jsonify(result.data)
 
@@ -76,10 +76,10 @@ def toggle_ativo(plano_id):
         supabase.table("planos")
         .select("ativo")
         .eq("id", str(plano_id))
-        .single()
+        .maybe_single()
         .execute()
     )
-    if not atual.data:
+    if not atual or not atual.data:
         return jsonify({"error": "Plano não encontrado"}), 404
 
     novo = not atual.data["ativo"]

@@ -74,9 +74,9 @@ sp(40)
 cap = Table([
     ["Escopo", "Endpoints da API + arquitetura de autenticação/autorização"],
     ["Tipo", "Análise estática (revisão de código)"],
-    ["Revisão", "2 — pós-correção do achado A-1"],
+    ["Revisão", "3 — re-auditoria completa"],
     ["Data", date.today().strftime("%d/%m/%Y")],
-    ["Endpoints analisados", "51 rotas em 10 blueprints"],
+    ["Endpoints analisados", "54 rotas em 10 blueprints (3 rotas antes não mapeadas identificadas)"],
     ["Base", "backend/app/ (auth, alunos, instrutores, planos, mensalidades,\navaliacoes, configuracoes, dashboard, relatorios, portal)"],
 ], colWidths=[4.2*cm, 10.8*cm])
 cap.setStyle(TableStyle([
@@ -117,9 +117,9 @@ resumo = Table([
     [Paragraph("Severidade", "CelB"), Paragraph("Qtd.", "CelB"), Paragraph("Resumo", "CelB")],
     [Paragraph("CRÍTICO", "Badge"), "0", Paragraph("Nenhum item crítico identificado.", "Cel")],
     [Paragraph("ALTO", "Badge"),    "1", Paragraph("<b>[CORRIGIDO]</b> IDOR: instrutor exportava PDF de avaliação de qualquer aluno.", "Cel")],
-    [Paragraph("MÉDIO", "Badge"),   "2", Paragraph("Rate limit em memória (multi-worker); token em localStorage + CSP report-only.", "Cel")],
-    [Paragraph("BAIXO", "Badge"),   "3", Paragraph("Política de senha fraca; bucket público; uso de .single() em caminhos de 'não encontrado'.", "Cel")],
-    [Paragraph("INFO", "Badge"),    "3", Paragraph("CORS em produção; leitura de planos por aluno; dependência externa do Gravatar no cadastro.", "Cel")],
+    [Paragraph("MÉDIO", "Badge"),   "3", Paragraph("Rate limit em memória (multi-worker); APScheduler multi-worker (e-mail duplicado em produção); CSP report-only.", "Cel")],
+    [Paragraph("BAIXO", "Badge"),   "5", Paragraph("Política de senha fraca; bucket público; .single() em 4 locais; race condition no pagamento; UUID não validado em 4 endpoints.", "Cel")],
+    [Paragraph("INFO", "Badge"),    "4", Paragraph("CORS em produção; leitura de planos por aluno; Gravatar externo; list_users sem paginação.", "Cel")],
 ], colWidths=[2.6*cm, 1.4*cm, 11*cm])
 resumo.setStyle(TableStyle([
     ("BACKGROUND",(0,0),(-1,0),AZUL),
@@ -140,10 +140,12 @@ resumo.setStyle(TableStyle([
 ]))
 el.append(resumo)
 sp(8)
-p("<b>Conclusão executiva:</b> o IDOR do PDF de avaliações (único item de severidade Alta) <b>foi "
-  "corrigido</b> nesta revisão, com testes de regressão. A prioridade restante é tratar o rate limit "
-  "antes de subir em produção com múltiplos workers. O demais são melhorias incrementais de robustez. "
-  "A base de segurança é confiável.", "Corpo")
+p("<b>Conclusão executiva:</b> o único item de severidade Alta (A-1, IDOR no PDF de avaliações) permanece "
+  "<b>corrigido</b> com cobertura de testes. A re-auditoria identificou <b>3 novos achados</b>: um de "
+  "severidade Média urgente (N-1 — APScheduler em multi-worker, que duplica e-mails de notificação e tem "
+  "a mesma raiz do M-1, resolvidos juntos com Redis) e dois de severidade Baixa (race condition no "
+  "pagamento e validação de UUID ausente em 4 endpoints). A prioridade imediata antes do deploy é "
+  "resolver M-1 + N-1 com a configuração do Redis. A base de segurança permanece confiável.", "Corpo")
 
 el.append(PageBreak())
 
@@ -246,12 +248,15 @@ linhas = [
     ["GET",    "/{id}/pdf",              "admin, instr., recep.", "Ownership do instrutor (404) — corrigido (A-1)"],
 
     sec("configuracoes — /configuracoes"),
-    ["GET",    "/usuarios",              "admin", "Lista profiles + e-mails do Auth"],
-    ["PATCH",  "/usuarios/{id}/tipo",    "admin", "Não altera o próprio"],
-    ["PATCH",  "/usuarios/{id}/status",  "admin", "Não desativa a si mesmo"],
-    ["POST/DEL","/usuarios/{id}/avatar", "admin, recep.", "Foto de terceiros"],
-    ["GET",    "/academia",              "Autenticado", "Leitura da config"],
-    ["PUT",    "/academia",              "admin", ""],
+    ["GET",    "/usuarios",                    "admin", "Lista profiles + e-mails; list_users() sem paginação (N-4)"],
+    ["POST",   "/usuarios",                    "admin", "Cria usuário; Pillow re-encode na foto"],
+    ["DEL",    "/usuarios/{id}",               "admin", "Exclusão; bloqueada se tiver débitos — uuid não validado (N-3)"],
+    ["POST",   "/usuarios/{id}/reset-senha",   "admin", "Reset de senha pelo admin — uuid não validado (N-3)"],
+    ["PATCH",  "/usuarios/{id}/tipo",          "admin", "Não altera o próprio — uuid não validado (N-3)"],
+    ["PATCH",  "/usuarios/{id}/status",        "admin", "Não desativa a si mesmo — uuid não validado (N-3)"],
+    ["POST/DEL","/usuarios/{id}/avatar",       "admin, recep.", "Foto de terceiros; uuid validado ✓"],
+    ["GET",    "/academia",                    "Autenticado", "Leitura da config"],
+    ["PUT",    "/academia",                    "admin", ""],
 
     sec("dashboard — /dashboard"),
     ["GET",    "/alunos | /financeiro | /frequencia", "admin, recep.", "Agregações"],
@@ -376,6 +381,27 @@ achado("M-2", "Token JWT em localStorage com CSP ainda em modo report-only", "M�
      "(exige rever o fluxo de envio do Bearer ao Flask)."),
 ])
 
+achado("N-1", "APScheduler em multi-worker — e-mails de notificação duplicados em produção", "MÉDIO", MED, [
+    ("Local", "backend/app/mensalidades/jobs.py — <font face='Courier'>iniciar_scheduler()</font> chamado em "
+     "<font face='Courier'>create_app()</font> (backend/app/__init__.py, linha 116) sem guard de worker"),
+    ("Descrição", "O <font face='Courier'>BackgroundScheduler</font> do APScheduler é iniciado dentro de "
+     "<font face='Courier'>create_app()</font>, função chamada por cada worker do gunicorn no deploy de produção. "
+     "Com N workers, N schedulers idênticos sobem simultaneamente e cada job (notificações de vencimento às 08h00, "
+     "notificações de atraso às 08h15, geração de mensalidades à meia-noite) executa N vezes — o aluno recebe N "
+     "e-mails por disparo. Mesma raiz estrutural do M-1: ausência de estado compartilhado entre workers."),
+    ("Impacto", "Em produção com gunicorn de 2–4 workers (padrão do docker-compose), cada aluno recebe 2–4 e-mails "
+     "por disparo de notificação. Além de péssima experiência, gera reputação negativa ao domínio de envio e pode "
+     "caracterizar spam."),
+    ("Exploração", "Não requer ação do atacante — o problema ocorre automaticamente no restart do gunicorn com "
+     "múltiplos workers."),
+    ("Correção sugerida", "<b>Opção 1 (recomendada):</b> usar <font face='Courier'>--preload</font> no gunicorn e "
+     "configurar o scheduler apenas no worker 0 (via <font face='Courier'>post_fork</font> hook) — uma linha de "
+     "config no Dockerfile/entrypoint. <b>Opção 2:</b> migrar para Celery + Redis Beat (resolve M-1 e N-1 de uma "
+     "vez, com fila e deduplicação). <b>Opção 3:</b> usar índice único de banco + flag de 'notificado' para tornar "
+     "os jobs idempotentes mesmo rodando N vezes."),
+    ("Prioridade", "Deve ser resolvido antes do deploy em produção — mesmo nível de urgência do M-1."),
+])
+
 achado("B-1", "Política de senha permissiva (mínimo de 6 caracteres)", "BAIXO", BAIXO, [
     ("Local", "backend/app/schemas.py — <font face='Courier'>Senha = Field(min_length=6, max_length=128)</font>"),
     ("Descrição", "Senhas de 6 caracteres, sem exigência de complexidade. Aceitável para um MVP, mas baixo para contas "
@@ -402,13 +428,57 @@ achado("B-3", "Uso de .single() em caminhos de 'não encontrado' gera 500 em vez
      "como já é feito na maior parte do código."),
 ])
 
-achado("I-1", "Hardening de produção: CORS, Gravatar externo e leitura de planos", "INFO", INFO, [
+achado("N-2", "Race condition no registro de pagamento (TOCTOU)", "BAIXO", BAIXO, [
+    ("Local", "backend/app/mensalidades/routes.py — <font face='Courier'>POST /mensalidades/&lt;id&gt;/pagar</font> "
+     "(registrar_pagamento)"),
+    ("Descrição", "O fluxo é: SELECT → verificar status → calcular juros → UPDATE. Duas requisições concorrentes "
+     "podem passar pela verificação <font face='Courier'>if m['status'] == 'paga'</font> antes que qualquer uma "
+     "delas complete o UPDATE. Ambas executariam o UPDATE com valores de juros calculados independentemente — "
+     "potencialmente com datas diferentes se o clock virar à meia-noite durante a janela. "
+     "O UPDATE final não usa cláusula condicional <font face='Courier'>.eq('status', 'pendente')</font>, "
+     "então não há proteção de concorrência no banco."),
+    ("Impacto", "Baixo na prática — admin/recepcionista raramente dispararão pagamentos simultâneos do mesmo "
+     "boleto. O pior cenário é um valor de juros levemente inconsistente no segundo pagamento. Não há risco "
+     "de duplicidade financeira real."),
+    ("Correção sugerida", "Adicionar <font face='Courier'>.eq('status', 'pendente')</font> ao UPDATE e verificar "
+     "se <font face='Courier'>result.data</font> está vazio (o banco não atualizou linha nenhuma = já estava paga): "
+     "retornar 409. Torna o endpoint idempotente sem precisar de lock explícito."),
+])
+
+achado("N-3", "Parâmetros de rota user_id sem conversão UUID em 4 endpoints de configuracoes", "BAIXO", BAIXO, [
+    ("Local", "backend/app/configuracoes/routes.py — "
+     "<font face='Courier'>DELETE /usuarios/&lt;user_id&gt;</font>, "
+     "<font face='Courier'>POST /usuarios/&lt;user_id&gt;/reset-senha</font>, "
+     "<font face='Courier'>PATCH /usuarios/&lt;user_id&gt;/tipo</font>, "
+     "<font face='Courier'>PATCH /usuarios/&lt;user_id&gt;/status</font>"),
+    ("Descrição", "Esses 4 endpoints declaram o parâmetro como "
+     "<font face='Courier'>&lt;user_id&gt;</font> (string livre) em vez de "
+     "<font face='Courier'>&lt;uuid:user_id&gt;</font>. Os endpoints de avatar do mesmo blueprint "
+     "já usam <font face='Courier'>&lt;uuid:user_id&gt;</font> corretamente. "
+     "Com a declaração string, valores malformados (ex.: <font face='Courier'>abc</font>, "
+     "<font face='Courier'>../</font>) chegam ao handler e são passados diretamente à Admin API do Supabase "
+     "ou a queries <font face='Courier'>.eq('id', user_id)</font>, "
+     "resultando em erros 400/500 do PostgREST em vez de 404 limpo do Flask."),
+    ("Impacto", "Robustez e consistência: erro 500 vaza stack trace em modo debug e retorna mensagem genérica "
+     "em produção. Não há risco de injeção (PostgREST valida o tipo da coluna UUID) nem de bypass de autorização. "
+     "Inconsistência com os demais endpoints do mesmo blueprint."),
+    ("Correção sugerida", "Substituir <font face='Courier'>&lt;user_id&gt;</font> por "
+     "<font face='Courier'>&lt;uuid:user_id&gt;</font> nas 4 rotas; Flask retornará 404 automaticamente para "
+     "qualquer valor não-UUID antes de chamar o handler."),
+])
+
+achado("I-1", "Hardening de produção: CORS, Gravatar externo, leitura de planos e paginação ausente", "INFO", INFO, [
     ("CORS", "<font face='Courier'>ALLOWED_ORIGINS</font> tem default localhost. Em produção, definir explicitamente as "
      "origens do front; nunca usar wildcard com <font face='Courier'>supports_credentials=True</font>."),
     ("Gravatar", "O cadastro de aluno e o avatar consultam gravatar.com (GET externo, timeout 5s) — dependência de "
      "terceiro no caminho de escrita e leve enumeração de e-mail no Gravatar. Considerar tornar opcional/assíncrono."),
     ("Planos", "<font face='Courier'>GET /planos/&lt;id&gt;</font> é legível por qualquer autenticado (inclusive aluno) e "
      "expõe nomes de instrutores vinculados. Dado pouco sensível — apenas registrar como decisão consciente."),
+    ("N-4 — list_users() sem paginação", "<font face='Courier'>supabase.auth.admin.list_users()</font> em "
+     "<font face='Courier'>GET /configuracoes/usuarios</font> carrega todos os usuários do tenant Supabase em memória "
+     "de uma vez. Para academias pequenas, irrelevante. Com centenas de usuários, pode gerar latência e consumo de "
+     "memória crescentes. Correção: usar paginação da Admin API (<font face='Courier'>page</font> + "
+     "<font face='Courier'>per_page</font>) ou filtrar pelo e-mail de busca diretamente na API."),
 ])
 
 el.append(PageBreak())
@@ -429,6 +499,12 @@ fortes = [
     "<b>Contas desativadas bloqueadas</b> no login e em cada requisição; fail-fast sem variáveis obrigatórias.",
     "<b>Unicidade garantida no banco</b> (índices únicos parciais) além da checagem na aplicação — defesa em profundidade contra corrida.",
     "<b>Anti-injeção em downloads</b>: nome de arquivo saneado no Content-Disposition e escape XML no título do PDF.",
+    "<b>Exclusão de usuário bloqueada com guarda financeiro</b>: aluno com mensalidades atrasadas não pode ser excluído "
+    "nem desativado — preserva integridade do histórico financeiro e impede apagamento de evidências de débito.",
+    "<b>Geração de mensalidades idempotente</b>: <font face='Courier'>criar_mensalidade()</font> verifica existência "
+    "antes de inserir, com índice único de banco como última linha de defesa — sem cobranças duplicadas.",
+    "<b>UUID validado nos endpoints de avatar de terceiros</b>: <font face='Courier'>POST/DEL /usuarios/&lt;uuid:user_id&gt;/avatar</font> "
+    "usa o conversor correto; Flask rejeita UUIDs malformados antes de entrar no handler.",
 ]
 for f in fortes:
     el.append(Paragraph("✓ " + f, styles["CorpoP"]))
@@ -440,11 +516,12 @@ hr()
 plano = [
     [Paragraph("Prioridade", "CelB"), Paragraph("Ação", "CelB"), Paragraph("Item", "CelB")],
     [Paragraph("<font color='#2e7d32'><b>✓ Concluído</b></font>", "Cel"),  Paragraph("Guard de ownership do instrutor adicionado ao <font face='Courier'>GET /avaliacoes/&lt;id&gt;/pdf</font> (com testes).", "Cel"), "A-1"],
-    [Paragraph("1 — Antes do deploy", "Cel"), Paragraph("Configurar Redis como storage do rate limit (compartilhado entre workers).", "Cel"), "M-1"],
+    [Paragraph("1 — Antes do deploy", "Cel"), Paragraph("Configurar Redis como storage do rate limit E usar --preload/post_fork no gunicorn para o scheduler (M-1 e N-1 têm a mesma raiz — Redis resolve os dois).", "Cel"), "M-1/N-1"],
     [Paragraph("2 — Antes do deploy", "Cel"), Paragraph("Definir ALLOWED_ORIGINS de produção; revisar HSTS/HTTPS na borda (Nginx/Cloudflare).", "Cel"), "I-1"],
-    [Paragraph("3 — Curto prazo", "Cel"), Paragraph("Sair do CSP report-only para modo de bloqueio após validação.", "Cel"), "M-2"],
+    [Paragraph("3 — Curto prazo", "Cel"), Paragraph("Sair do CSP report-only para modo de bloqueio após validação tela a tela.", "Cel"), "M-2"],
     [Paragraph("4 — Curto prazo", "Cel"), Paragraph("Elevar mínimo de senha e ativar proteção de senha vazada no Supabase.", "Cel"), "B-1"],
-    [Paragraph("5 — Backlog", "Cel"), Paragraph("Padronizar .maybe_single(); revisar bucket de avatares; Gravatar opcional.", "Cel"), "B-2/B-3"],
+    [Paragraph("5 — Backlog", "Cel"), Paragraph("Padronizar .maybe_single(); revisar bucket de avatares; Gravatar opcional; trocar <user_id> por <uuid:user_id> nas 4 rotas; guard condicional no pagamento.", "Cel"), "B-2/B-3/N-2/N-3"],
+    [Paragraph("6 — Backlog", "Cel"), Paragraph("Adicionar paginação ao list_users() para escalabilidade.", "Cel"), "N-4"],
 ]
 ptbl = Table(plano, colWidths=[3.2*cm, 9.8*cm, 2.0*cm])
 ptbl.setStyle(TableStyle([

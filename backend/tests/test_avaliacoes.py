@@ -24,7 +24,7 @@ def _mock_auth(mock_supa, tipo="admin"):
     user.id = "user-uuid"
     mock_supa.auth.get_user.return_value = MagicMock(user=user)
     perfil = MagicMock(data={"tipo": tipo})
-    mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = perfil
+    mock_supa.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = perfil
     mock_supa.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = perfil
 
 
@@ -136,12 +136,15 @@ def test_listar_instrutor_filtra_seus_alunos(client):
 
 
 def test_listar_instrutor_aluno_id_fora_do_escopo(client):
-    # Instrutor filtrando por aluno que não é dele → vazio (sem vazar dados)
+    # Instrutor filtrando por aluno que não é dele → vazio (sem vazar dados).
+    # (N-3) O aluno_id deve ser UUID válido; valores inválidos retornam 400.
+    # Aqui usamos um UUID válido que simplesmente não está no escopo do instrutor.
+    _ALUNO_FORA = "00000000-0000-0000-0000-000000000099"
     with patch("app.avaliacoes.routes.supabase"), \
          patch("app.avaliacoes.routes._alunos_do_instrutor", return_value=["aluno-1"]), \
          patch("app.auth.middleware.supabase") as mock_auth:
         _mock_auth(mock_auth, tipo="instrutor")
-        res = client.get("/avaliacoes?aluno_id=aluno-99", headers=_auth_headers())
+        res = client.get(f"/avaliacoes?aluno_id={_ALUNO_FORA}", headers=_auth_headers())
         assert res.status_code == 200
         assert res.get_json()["data"] == []
 
@@ -351,7 +354,7 @@ def test_buscar_sucesso(client):
          patch("app.auth.middleware.supabase") as mock_auth:
         _mock_auth(mock_auth)
         sem_instrutor = {**FAKE_AVALIACAO, "instrutor_id": None}
-        mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
+        mock_supa.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
             data=sem_instrutor
         )
         res = client.get(
@@ -366,7 +369,7 @@ def test_buscar_inexistente(client):
     with patch("app.avaliacoes.routes.supabase") as mock_supa, \
          patch("app.auth.middleware.supabase") as mock_auth:
         _mock_auth(mock_auth)
-        mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(data=None)
+        mock_supa.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(data=None)
         res = client.get(
             "/avaliacoes/00000000-0000-0000-0000-000000000099",
             headers=_auth_headers(),
@@ -413,7 +416,7 @@ def test_atualizar_recalcula_imc(client):
          patch("app.auth.middleware.supabase") as mock_auth:
         _mock_auth(mock_auth)
         # valor atual (para buscar altura quando só peso muda)
-        mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
+        mock_supa.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
             data={"peso_kg": 75.0, "altura_cm": 175.0}
         )
         captured = {}
@@ -452,7 +455,7 @@ def test_atualizar_inexistente(client):
     with patch("app.avaliacoes.routes.supabase") as mock_supa, \
          patch("app.auth.middleware.supabase") as mock_auth:
         _mock_auth(mock_auth)
-        mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(data=None)
+        mock_supa.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(data=None)
         res = client.put(
             "/avaliacoes/00000000-0000-0000-0000-000000000099",
             json={"observacoes": "teste"},
@@ -466,7 +469,7 @@ def test_buscar_instrutor_fora_do_escopo_404(client):
          patch("app.avaliacoes.routes._alunos_do_instrutor", return_value=[]), \
          patch("app.auth.middleware.supabase") as mock_auth:
         _mock_auth(mock_auth, tipo="instrutor")
-        mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
+        mock_supa.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
             data=FAKE_AVALIACAO
         )
         res = client.get(
@@ -481,7 +484,7 @@ def test_atualizar_instrutor_fora_do_escopo_404(client):
          patch("app.avaliacoes.routes._alunos_do_instrutor", return_value=["outro"]), \
          patch("app.auth.middleware.supabase") as mock_auth:
         _mock_auth(mock_auth, tipo="instrutor")
-        mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
+        mock_supa.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
             data={"aluno_id": "aluno-x", "peso_kg": 75.0, "altura_cm": 175.0}
         )
         res = client.put(
@@ -514,7 +517,7 @@ def test_exportar_pdf(client):
     with patch("app.avaliacoes.routes.supabase") as mock_supa, \
          patch("app.auth.middleware.supabase") as mock_auth:
         _mock_auth(mock_auth)
-        mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
+        mock_supa.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
             data={**FAKE_AVALIACAO, "alunos": {"cpf": "12345678900", "profiles": {"nome": "João"}}}
         )
         res = client.get(
@@ -533,7 +536,7 @@ def test_exportar_pdf_instrutor_fora_do_escopo_404(client):
          patch("app.avaliacoes.routes._alunos_do_instrutor", return_value=[]), \
          patch("app.auth.middleware.supabase") as mock_auth:
         _mock_auth(mock_auth, tipo="instrutor")
-        mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
+        mock_supa.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
             data={**FAKE_AVALIACAO, "alunos": {"cpf": "1", "profiles": {"nome": "João"}}}
         )
         res = client.get(
@@ -550,7 +553,7 @@ def test_exportar_pdf_instrutor_seu_aluno_ok(client):
                return_value=[FAKE_AVALIACAO["aluno_id"]]), \
          patch("app.auth.middleware.supabase") as mock_auth:
         _mock_auth(mock_auth, tipo="instrutor")
-        mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
+        mock_supa.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
             data={**FAKE_AVALIACAO, "alunos": {"cpf": "1", "profiles": {"nome": "João"}}}
         )
         res = client.get(
@@ -566,7 +569,7 @@ def test_exportar_pdf_nome_com_markup(client):
     with patch("app.avaliacoes.routes.supabase") as mock_supa, \
          patch("app.auth.middleware.supabase") as mock_auth:
         _mock_auth(mock_auth)
-        mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
+        mock_supa.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
             data={**FAKE_AVALIACAO, "alunos": {"cpf": "1", "profiles": {"nome": "Jo<ão> & <b>Cia</b>"}}}
         )
         res = client.get(

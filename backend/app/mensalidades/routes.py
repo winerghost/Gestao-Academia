@@ -3,7 +3,7 @@ from datetime import date
 from flask import Blueprint, request, jsonify, g
 from ..supabase_client import supabase, get_user_client
 from ..auth.middleware import require_auth, require_role
-from ..validation import mes_valido
+from ..validation import mes_valido, uuid_valido
 
 mensalidades_bp = Blueprint("mensalidades", __name__, url_prefix="/mensalidades")
 
@@ -20,6 +20,12 @@ def listar():
     # último dia REAL do mês — "{mes}-31" estouraria em meses de 30 dias/fev.
     if mes is not None and not mes_valido(mes):
         return jsonify({"error": "Parâmetro 'mes' deve estar no formato AAAA-MM"}), 400
+
+    # aluno_id vai para uma coluna UUID no Postgres. Um valor não-UUID causaria
+    # um erro de cast que o PostgREST retorna com o texto interno do Postgres
+    # (vazamento de tipo/coluna). Validamos antes e devolvemos 400 limpo.
+    if aluno_id is not None and not uuid_valido(aluno_id):
+        return jsonify({"error": "Parâmetro 'aluno_id' deve ser um UUID válido"}), 400
 
     query = (
         supabase.table("mensalidades")
@@ -66,10 +72,10 @@ def registrar_pagamento(mensalidade_id):
         supabase.table("mensalidades")
         .select("*")
         .eq("id", str(mensalidade_id))
-        .single()
+        .maybe_single()
         .execute()
     )
-    if not mensalidade.data:
+    if not mensalidade or not mensalidade.data:
         return jsonify({"error": "Mensalidade não encontrada"}), 404
 
     m = mensalidade.data
@@ -94,16 +100,22 @@ def registrar_pagamento(mensalidade_id):
             "juros": juros,
         })
         .eq("id", str(mensalidade_id))
+        .neq("status", "paga")
         .execute()
     )
+    if not result.data:
+        return jsonify({"error": "Mensalidade já foi paga"}), 409
 
     # Verifica se aluno ainda tem mensalidades atrasadas após o pagamento
     aluno_plano_id = m["aluno_plano_id"]
+    # .maybe_single() evita PGRST116 caso aluno_plano_id esteja inconsistente
+    # (dados corrompidos). O pagamento já foi registrado; esta busca é só para
+    # atualizar o status do aluno — falha aqui não deve desfazer o pagamento.
     aluno_plano = (
         supabase.table("aluno_planos")
         .select("aluno_id")
         .eq("id", aluno_plano_id)
-        .single()
+        .maybe_single()
         .execute()
     )
     if aluno_plano.data:

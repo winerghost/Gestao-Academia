@@ -1,9 +1,30 @@
+import calendar
 import logging
 from datetime import date, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 from ..supabase_client import supabase
 
 _log = logging.getLogger(__name__)
+
+
+def _proxima_vencimento(ultima: date) -> date:
+    """Avança exatamente 1 mês no calendário, sem drift acumulado.
+
+    `timedelta(days=30)` causa problemas reais de negócio:
+      Jan 31 + 30 dias = Mar  2 → fevereiro inteiro é pulado, o aluno
+      não recebe cobrança do mês e a academia perde a mensalidade.
+      Mar 31 + 30 dias = Apr 30 → correto, mas o dia muda (31 → 30).
+
+    Aqui avançamos mês a mês no calendário: o dia é mantido quando o
+    mês destino comporta (ex.: Jun 15 → Jul 15), e capado ao último
+    dia quando necessário (ex.: Jan 31 → Fev 28/29, Mar 31 → Abr 30).
+    """
+    mes = ultima.month + 1
+    ano = ultima.year
+    if mes > 12:
+        mes, ano = 1, ano + 1
+    dia = min(ultima.day, calendar.monthrange(ano, mes)[1])
+    return date(ano, mes, dia)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -134,7 +155,7 @@ def job_gerar_mensalidades():
             continue
 
         ultima_vcto = date.fromisoformat(ultima.data[0]["data_vencimento"])
-        proxima_vcto = ultima_vcto + timedelta(days=30)
+        proxima_vcto = _proxima_vencimento(ultima_vcto)
 
         # Não gera se próxima está além do horizonte de 5 dias
         if proxima_vcto.isoformat() > horizonte:
