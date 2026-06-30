@@ -1,12 +1,4 @@
-# ── Stage 1: dependências ─────────────────────────────────────────────────────
-# Instala apenas as dependências de produção (--omit=dev) para o stage final.
-FROM node:20-alpine AS deps
-WORKDIR /app
-
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
-
-# ── Stage 2: build ────────────────────────────────────────────────────────────
+# ── Stage 1: build ────────────────────────────────────────────────────────────
 # Compila o Next.js com todas as devDependencies (TypeScript, tailwind, etc.).
 # ARGs: variáveis públicas do Next.js (NEXT_PUBLIC_*) são embutidas no bundle
 # em build time — precisam estar disponíveis aqui, não no runtime.
@@ -18,9 +10,10 @@ ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
 ARG NEXT_PUBLIC_API_URL
 
 COPY package.json package-lock.json ./
-# NODE_ENV não pode ser 'production' aqui: npm ci pularia devDependencies,
-# e tailwindcss/@tailwindcss/postcss (devDeps) são necessários no build.
-RUN npm ci
+# npm install (não npm ci) porque o lock foi gerado no Windows e não contém
+# os binários nativos musl (lightningcss-linux-x64-musl exigido pelo Tailwind v4).
+# npm install resolve optional deps para a plataforma atual (Alpine/musl).
+RUN npm install
 
 ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
     NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY \
