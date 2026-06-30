@@ -1,0 +1,40 @@
+# Dependências (reinstaladas no build)
+node_modules/
+
+# Cache e output do Next.js (gerados durante o build no container)
+.next/
+out/
+
+# Ambiente local (nunca deve entrar na imagem)
+.env
+.env.local
+.env.development
+.env.development.local
+.env.test
+.env.test.local
+.env.production.local
+
+# Testes
+**/*.test.js
+**/*.test.ts
+**/*.spec.js
+**/*.spec.ts
+jest.config.js
+jest.setup.js
+coverage/
+
+# Ferramentas de desenvolvimento
+.git/
+.gitignore
+.vscode/
+.idea/
+*.log
+
+# Docs internos (não precisam ir para produção)
+AGENTS.md
+CLAUDE.md
+README.md
+
+# Arquivos de SO
+.DS_Store
+Thumbs.db

@@ -1,0 +1,27 @@
+# Ambiente local
+.env
+.env.*
+
+# Cache Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Testes e migrations (não vão para o container de produção)
+tests/
+migrations/
+scripts/
+
+# Ferramentas de desenvolvimento
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Arquivos de SO
+.DS_Store
+Thumbs.db
