@@ -17,13 +17,15 @@ ARG NEXT_PUBLIC_SUPABASE_URL
 ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
 ARG NEXT_PUBLIC_API_URL
 
+COPY package.json package-lock.json ./
+# NODE_ENV não pode ser 'production' aqui: npm ci pularia devDependencies,
+# e tailwindcss/@tailwindcss/postcss (devDeps) são necessários no build.
+RUN npm ci
+
 ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
     NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY \
     NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
     NODE_ENV=production
-
-COPY package.json package-lock.json ./
-RUN npm ci
 
 COPY . .
 # next build lê output: 'standalone' do next.config.mjs e gera:
