@@ -10,10 +10,14 @@ ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
 ARG NEXT_PUBLIC_API_URL
 
 COPY package.json package-lock.json ./
-# npm install (não npm ci) porque o lock foi gerado no Windows e não contém
-# os binários nativos musl (lightningcss-linux-x64-musl exigido pelo Tailwind v4).
-# npm install resolve optional deps para a plataforma atual (Alpine/musl).
-RUN npm install
+# O lock é gerado no Windows e só grava a entrada instalável completa do binário
+# nativo do win32 (lightningcss-win32-x64-msvc); os outros (linux-x64-musl etc.)
+# ficam sem resolved/integrity. Por isso `npm install` lendo esse lock PULA o
+# binário musl exigido pelo Tailwind v4 → "Cannot find module lightningcss...musl".
+# Removemos o lock aqui para o npm re-resolver os optional deps nativos para a
+# plataforma do builder (Alpine/musl). O lock do Windows continua commitado para
+# o dev local — mantém a compatibilidade local ↔ VPS.
+RUN rm -f package-lock.json && npm install
 
 ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
     NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY \
