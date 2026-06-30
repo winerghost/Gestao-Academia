@@ -65,7 +65,10 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:5000/health | grep -q ok"]
+      # 127.0.0.1 (não 'localhost'): dentro do container 'localhost' resolve
+      # para ::1 (IPv6) primeiro, mas o gunicorn escuta só em IPv4 (0.0.0.0) →
+      # a sonda dava "Connection refused" e o container ficava unhealthy.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5000/health | grep -q ok"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -92,7 +95,9 @@ services:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ | grep -q html"]
+      # 127.0.0.1 (não 'localhost'): mesmo motivo do backend — o Next standalone
+      # escuta em IPv4 (HOSTNAME=0.0.0.0) e 'localhost' cairia em ::1 (IPv6).
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ | grep -q html"]
       interval: 30s
       timeout: 5s
       retries: 3
