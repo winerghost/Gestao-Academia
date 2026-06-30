@@ -20,24 +20,31 @@ WORKDIR /app
 # Shared libs de runtime que Pillow e libffi precisam em tempo de execução.
 RUN apk add --no-cache jpeg zlib libffi
 
+# Usuário sem privilégios (evita que um exploit ganhe root no container).
+# Criado ANTES de copiar os pacotes para podermos defini-lo como dono.
+RUN adduser -D appuser
+
 # Pacotes Python do builder (sem gcc, sem cache de pip).
-COPY --from=builder /root/.local /root/.local
+# Vão para a HOME do appuser, não /root/.local: no Alpine /root é 0700 e o
+# appuser não consegue atravessá-lo → "No module named gunicorn". Em
+# /home/appuser/.local o Python encontra o user-site automaticamente (HOME).
+COPY --from=builder --chown=appuser:appuser /root/.local /home/appuser/.local
 
 # Código da aplicação (sem testes, sem migrations, sem scripts).
-COPY app/ ./app/
-COPY run.py gunicorn.conf.py ./
+COPY --chown=appuser:appuser app/ ./app/
+COPY --chown=appuser:appuser run.py gunicorn.conf.py ./
 
-ENV PATH=/root/.local/bin:$PATH \
+# HOME explícito: o Docker USER não define $HOME, e o Python deriva o user-site
+# (~/.local/lib/...) a partir dele. Sem isso, voltaria a procurar em /root/.local.
+ENV HOME=/home/appuser \
+    PATH=/home/appuser/.local/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# Usuário sem privilégios (evita que um exploit ganhe root no container).
-RUN adduser -D appuser
 USER appuser
 
 EXPOSE 5000
 
 # gunicorn lê WEB_CONCURRENCY, BIND e preload_app do gunicorn.conf.py.
 # post_fork reinicia o cliente Supabase em cada worker (pool de conexões limpo).
-# Usa 'python -m gunicorn' para evitar permission denied ao executar /root/.local/bin/gunicorn.
 CMD ["python", "-m", "gunicorn", "-c", "gunicorn.conf.py", "run:app"]
