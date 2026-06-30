@@ -108,9 +108,12 @@ services:
     image: nginx:1.27-alpine
     restart: unless-stopped
     ports:
-      - "80:80"
-      # Descomente para HTTPS com certificado Cloudflare Origin:
-      # - "443:443"
+      # CloudPanel (proxy reverso do host) termina o TLS e encaminha para
+      # http://127.0.0.1:8000 → este nginx interno, que separa / → frontend e
+      # /api/ → backend. Bind em 127.0.0.1 (não 0.0.0.0): só o CloudPanel no
+      # próprio host alcança, sem expor o stack direto à internet e sem brigar
+      # pela porta 80/443 que o CloudPanel já ocupa.
+      - "127.0.0.1:8000:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       # Certificado Cloudflare Origin (se usar Full SSL):
