@@ -7,6 +7,7 @@ import {
   getMe, getUsuarios, atualizarTipoUsuario, atualizarStatusUsuario,
   criarUsuario, excluirUsuario,
 } from '@/lib/api'
+import ModalConfirmacao from '@/components/ModalConfirmacao'
 import CapturaFoto from '@/components/CapturaFoto'
 
 const COLUNAS = [
@@ -84,8 +85,9 @@ export default function UsuariosKanbanPage() {
   const [erroModal, setErroModal]       = useState('')
   const [mostrarSenha, setMostrarSenha] = useState(false)
 
-  // Confirmação de exclusão inline (guarda o id do usuário sendo confirmado)
-  const [confirmandoId, setConfirmandoId] = useState(null)
+  // Modal de confirmação de exclusão
+  const [usuarioParaExcluir, setUsuarioParaExcluir] = useState(null)
+  const [excluindoUsuario, setExcluindoUsuario] = useState(false)
 
   useEffect(() => {
     const t = setTimeout(() => setBuscaDebounced(busca), 400)
@@ -205,15 +207,22 @@ export default function UsuariosKanbanPage() {
 
   // ── Excluir usuário ──────────────────────────────────────────────────────
 
-  async function excluirU(u) {
-    setConfirmandoId(null)
+  function abrirModalExcluir(u) {
+    setUsuarioParaExcluir(u)
+  }
+
+  async function confirmarExclusao() {
+    if (!usuarioParaExcluir) return
+    setExcluindoUsuario(true)
     try {
-      await excluirUsuario(token, u.id)
-      setUsuarios(prev => prev.filter(x => x.id !== u.id))
-      showToast(`${u.nome} foi excluído permanentemente.`)
+      await excluirUsuario(token, usuarioParaExcluir.id)
+      setUsuarios(prev => prev.filter(x => x.id !== usuarioParaExcluir.id))
+      showToast(`${usuarioParaExcluir.nome} foi excluído permanentemente.`)
+      setUsuarioParaExcluir(null)
     } catch (err) {
       showToast(err.message || 'Erro ao excluir usuário.', false)
     }
+    setExcluindoUsuario(false)
   }
 
   // ── Modal de criação ────────────────────────────────────────────────────
@@ -452,7 +461,6 @@ export default function UsuariosKanbanPage() {
                     {visiveis.map(u => {
                       const isMe = u.id === meId
                       const info = cargoInfo(u.tipo)
-                      const confirmando = confirmandoId === u.id
                       return (
                         <tr key={u.id} className="border-t border-gray-100 hover:bg-gray-50/60">
                           {/* Nome + avatar */}
@@ -510,22 +518,6 @@ export default function UsuariosKanbanPage() {
                           <td className="px-4 py-3 text-right">
                             {isMe ? (
                               <span className="text-gray-300">—</span>
-                            ) : confirmando ? (
-                              <span className="inline-flex items-center gap-2">
-                                <span className="text-xs text-gray-600">Excluir definitivamente?</span>
-                                <button
-                                  onClick={() => excluirU(u)}
-                                  className="text-xs font-semibold text-red-600 hover:underline"
-                                >
-                                  Sim
-                                </button>
-                                <button
-                                  onClick={() => setConfirmandoId(null)}
-                                  className="text-xs text-gray-500 hover:underline"
-                                >
-                                  Não
-                                </button>
-                              </span>
                             ) : (
                               <span className="inline-flex items-center gap-4">
                                 <button
@@ -536,7 +528,7 @@ export default function UsuariosKanbanPage() {
                                   {u.ativo ? '⊘ Desativar' : '⏻ Ativar'}
                                 </button>
                                 <button
-                                  onClick={() => setConfirmandoId(u.id)}
+                                  onClick={() => abrirModalExcluir(u)}
                                   className="text-sm font-medium text-red-500 hover:text-red-700 hover:underline"
                                 >
                                   Excluir
@@ -741,6 +733,19 @@ export default function UsuariosKanbanPage() {
           </div>
         </div>
       )}
+
+      {/* ── Modal de confirmação de exclusão ────────────────────────────────── */}
+      <ModalConfirmacao
+        aberto={!!usuarioParaExcluir}
+        titulo="Excluir usuário"
+        mensagem={usuarioParaExcluir ? `Tem certeza que deseja excluir ${usuarioParaExcluir.nome}?\n\nEsta ação é permanente e não pode ser desfeita.` : ''}
+        botaoConfirmar="Excluir"
+        botaoCancelar="Cancelar"
+        perigoso={true}
+        aoConfirmar={confirmarExclusao}
+        aoCancelar={() => setUsuarioParaExcluir(null)}
+        carregando={excluindoUsuario}
+      />
 
       {/* ── Toast ───────────────────────────────────────────────────────────── */}
       {toast && (

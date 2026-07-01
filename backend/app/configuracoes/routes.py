@@ -11,7 +11,7 @@ from ..schemas import (
     ResetSenhaAdminSchema,
 )
 from ..validation import validate_body
-from ..errors import email_ja_cadastrado
+from ..errors import email_ja_cadastrado, erro_campo
 from ..auth.avatar import (
     AvatarError,
     processar_imagem,
@@ -108,8 +108,9 @@ def criar_usuario(payload: CriarUsuarioSchema):
         user_id = str(user_resp.user.id)
     except Exception as exc:
         current_app.logger.exception("Falha ao criar usuário no Supabase Auth")
-        msg = "E-mail já cadastrado" if email_ja_cadastrado(exc) else "Não foi possível criar o usuário"
-        return jsonify({"error": msg}), 400
+        if email_ja_cadastrado(exc):
+            return erro_campo("email", "E-mail já cadastrado.", 400)
+        return jsonify({"error": "Não foi possível criar o usuário"}), 400
 
     # 2. Atualiza o profile: telefone e avatar_url (o trigger só popula nome e tipo).
     avatar_url = None

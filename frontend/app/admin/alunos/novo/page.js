@@ -4,7 +4,11 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '../../../../hooks/useAuth'
 import { criarAluno } from '../../../../lib/api'
+import { mascaraTelefone } from '../../../../lib/masks'
 import CapturaFoto from '@/components/CapturaFoto'
+import FormField, { inputClass } from '@/components/FormField'
+import Toast from '@/components/Toast'
+import { useToast } from '@/hooks/useToast'
 
 export default function NovoAluno() {
   const router = useRouter()
@@ -14,25 +18,30 @@ export default function NovoAluno() {
     data_nascimento: '', endereco: '', status: 'ativo',
     frequencia_habilitada: false, foto: null,
   })
+  const [fieldErrors, setFieldErrors] = useState({})
   const [erro, setErro] = useState('')
   const [loading, setLoading] = useState(false)
+  const { toast, show } = useToast()
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   async function handleSubmit(e) {
     e.preventDefault()
     setErro('')
+    setFieldErrors({})
     setLoading(true)
     try {
       await criarAluno(token, form)
+      show('Aluno cadastrado com sucesso!', 'success')
       router.push('/admin/alunos')
     } catch (err) {
-      setErro(err.message)
+      setFieldErrors(err.fields || {})
+      setErro(Object.keys(err.fields || {}).length ? '' : err.message)
+      setLoading(false)
+      const first = Object.keys(err.fields || {})[0]
+      if (first) document.getElementById(first)?.focus()
     }
-    setLoading(false)
   }
-
-  const input = "w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white"
 
   return (
     <div>
@@ -46,49 +55,49 @@ export default function NovoAluno() {
 
       <div className="bg-white rounded-xl shadow-sm p-6 max-w-2xl">
         <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
-          <div className="col-span-2">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Foto do aluno</label>
+          <FormField label="Foto do aluno" className="col-span-2">
             <CapturaFoto value={form.foto} nome={form.nome} onChange={d => set('foto', d)} disabled={loading} />
             <p className="text-xs text-gray-400 mt-2">
               Se o e-mail do aluno tiver um Gravatar, ele será usado no lugar desta foto.
             </p>
-          </div>
-          <div className="col-span-2">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nome completo *</label>
-            <input className={input} value={form.nome} onChange={e => set('nome', e.target.value)} required placeholder="João da Silva" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">E-mail *</label>
-            <input type="email" className={input} value={form.email} onChange={e => set('email', e.target.value)} required placeholder="joao@email.com" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Senha *</label>
-            <input type="password" className={input} value={form.senha} onChange={e => set('senha', e.target.value)} required placeholder="Mínimo 6 caracteres" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">CPF *</label>
-            <input className={input} value={form.cpf} onChange={e => set('cpf', e.target.value)} required placeholder="000.000.000-00" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Telefone</label>
-            <input className={input} value={form.telefone} onChange={e => set('telefone', e.target.value)} placeholder="(11) 99999-9999" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Data de nascimento</label>
-            <input type="date" className={input} value={form.data_nascimento} onChange={e => set('data_nascimento', e.target.value)} />
-          </div>
-          <div className="col-span-2">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Endereço</label>
-            <input className={input} value={form.endereco} onChange={e => set('endereco', e.target.value)} placeholder="Rua, número, bairro, cidade" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-            <select className={input} value={form.status} onChange={e => set('status', e.target.value)}>
+          </FormField>
+
+          <FormField label="Nome completo" required error={fieldErrors.nome} className="col-span-2">
+            <input id="nome" className={inputClass(!!fieldErrors.nome)} value={form.nome} onChange={e => set('nome', e.target.value)} required placeholder="João da Silva" />
+          </FormField>
+
+          <FormField label="E-mail" required error={fieldErrors.email}>
+            <input id="email" type="email" className={inputClass(!!fieldErrors.email)} value={form.email} onChange={e => set('email', e.target.value)} required placeholder="joao@email.com" />
+          </FormField>
+
+          <FormField label="Senha" required error={fieldErrors.senha}>
+            <input id="senha" type="password" className={inputClass(!!fieldErrors.senha)} value={form.senha} onChange={e => set('senha', e.target.value)} required placeholder="Mínimo 8 caracteres" />
+          </FormField>
+
+          <FormField label="CPF" required error={fieldErrors.cpf}>
+            <input id="cpf" className={inputClass(!!fieldErrors.cpf)} value={form.cpf} onChange={e => set('cpf', e.target.value)} required placeholder="000.000.000-00" />
+          </FormField>
+
+          <FormField label="Telefone" error={fieldErrors.telefone}>
+            <input id="telefone" className={inputClass(!!fieldErrors.telefone)} value={form.telefone} onChange={e => set('telefone', mascaraTelefone(e.target.value))} placeholder="(11) 99999-9999" maxLength="15" />
+          </FormField>
+
+          <FormField label="Data de nascimento" error={fieldErrors.data_nascimento}>
+            <input id="data_nascimento" type="date" className={inputClass(!!fieldErrors.data_nascimento)} value={form.data_nascimento} onChange={e => set('data_nascimento', e.target.value)} />
+          </FormField>
+
+          <FormField label="Endereço" error={fieldErrors.endereco} className="col-span-2">
+            <input id="endereco" className={inputClass(!!fieldErrors.endereco)} value={form.endereco} onChange={e => set('endereco', e.target.value)} placeholder="Rua, número, bairro, cidade" />
+          </FormField>
+
+          <FormField label="Status" error={fieldErrors.status}>
+            <select id="status" className={inputClass(!!fieldErrors.status)} value={form.status} onChange={e => set('status', e.target.value)}>
               <option value="ativo">Ativo</option>
               <option value="inativo">Inativo</option>
             </select>
-          </div>
-          <div className="flex items-center gap-3 pt-6">
+          </FormField>
+
+          <div className="flex items-center gap-3 pt-4">
             <input type="checkbox" id="freq" checked={form.frequencia_habilitada}
               onChange={e => set('frequencia_habilitada', e.target.checked)}
               className="w-4 h-4 accent-orange-500 cursor-pointer" />
@@ -113,6 +122,8 @@ export default function NovoAluno() {
           </div>
         </form>
       </div>
+
+      {toast && <Toast message={toast.message} type={toast.type} />}
     </div>
   )
 }

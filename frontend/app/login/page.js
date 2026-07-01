@@ -3,17 +3,23 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
 import { login as apiLogin, getMe } from '../../lib/api'
+import FormField, { inputClass } from '@/components/FormField'
+import Toast from '@/components/Toast'
+import { useToast } from '@/hooks/useToast'
 
 export default function Login() {
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
+  const [fieldErrors, setFieldErrors] = useState({})
   const [erro, setErro] = useState('')
   const [loading, setLoading] = useState(false)
+  const { toast, show } = useToast()
 
   async function handleLogin(e) {
     e.preventDefault()
     setErro('')
+    setFieldErrors({})
     setLoading(true)
 
     try {
@@ -28,10 +34,14 @@ export default function Login() {
       await supabase.auth.setSession({ access_token, refresh_token })
 
       const profile = await getMe(access_token)
+      show('Bem-vindo!', 'success')
       router.replace(profile.tipo === 'aluno' ? '/' : '/admin')
-    } catch {
-      setErro('E-mail ou senha inválidos.')
+    } catch (err) {
+      setFieldErrors(err.fields || {})
+      setErro(Object.keys(err.fields || {}).length ? '' : err.message)
       setLoading(false)
+      const first = Object.keys(err.fields || {})[0]
+      if (first) document.getElementById(first)?.focus()
     }
   }
 
@@ -77,28 +87,29 @@ export default function Login() {
           </div>
 
           <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">E-mail</label>
+            <FormField label="E-mail" required error={fieldErrors.email}>
               <input
+                id="email"
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 required
                 placeholder="seu@email.com"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white"
+                className={inputClass(!!fieldErrors.email)}
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Senha</label>
+            </FormField>
+
+            <FormField label="Senha" required error={fieldErrors.password || fieldErrors.senha}>
               <input
+                id="password"
                 type="password"
                 value={senha}
                 onChange={e => setSenha(e.target.value)}
                 required
                 placeholder="••••••••"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white"
+                className={inputClass(!!fieldErrors.password || !!fieldErrors.senha)}
               />
-            </div>
+            </FormField>
 
             {erro && (
               <p className="text-sm text-red-500 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{erro}</p>
@@ -114,6 +125,8 @@ export default function Login() {
           </form>
         </div>
       </div>
+
+      {toast && <Toast message={toast.message} type={toast.type} />}
     </div>
   )
 }

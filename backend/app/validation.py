@@ -49,12 +49,43 @@ def data_iso_valida(valor: str | None) -> bool:
         return False
 
 
+def _mensagem_pydantic_sanitizada(err: dict) -> str:
+    """Converte erro cru do Pydantic (em inglês, potencialmente com detalhes
+    técnicos) para uma mensagem amigável em português, sem vazar implementação.
+    """
+    tipo = err.get("type", "value_error")
+    ctx = err.get("ctx", {})
+
+    if tipo == "missing":
+        return "Campo obrigatório."
+    if tipo == "string_too_short":
+        min_len = ctx.get("min_length", "?")
+        return f"Mínimo de {min_len} caracteres."
+    if tipo == "string_too_long":
+        max_len = ctx.get("max_length", "?")
+        return f"Máximo de {max_len} caracteres."
+    if tipo == "string_pattern_mismatch":
+        return "Formato inválido."
+    if tipo == "literal_error":
+        return "Valor inválido para este campo."
+    if tipo == "extra_forbidden":
+        return "Campo não permitido."
+    if tipo in ("less_than_equal", "greater_than"):
+        return "Valor fora do intervalo permitido."
+    if tipo == "less_than":
+        return "Valor muito grande."
+    if tipo == "value_error":
+        msg = err.get("msg", "Valor inválido")
+        return msg if "pt" in msg.lower() or "deve" in msg.lower() else "Valor inválido."
+    return "Valor inválido."
+
+
 def _formatar_erros(exc: ValidationError) -> dict:
-    """Converte os erros do Pydantic em {campo: mensagem} legível."""
+    """Converte os erros do Pydantic em {campo: mensagem} legível e segura."""
     out: dict[str, str] = {}
     for err in exc.errors():
         campo = ".".join(str(p) for p in err["loc"]) or "_body"
-        out[campo] = err["msg"]
+        out[campo] = _mensagem_pydantic_sanitizada(err)
     return out
 
 

@@ -1,4 +1,15 @@
 """Helpers para tratar erros de forma segura (sem vazar detalhes internos)."""
+from flask import jsonify
+
+
+def erro_campo(campo: str, mensagem: str, status: int = 400):
+    """Retorna erro estruturado com a chave `fields`, indicando qual campo falhou.
+
+    Exemplo:
+        if email_ja_cadastrado(exc):
+            return erro_campo("email", "E-mail já cadastrado.", 409)
+    """
+    return jsonify({"error": mensagem, "fields": {campo: mensagem}}), status
 
 
 def email_ja_cadastrado(exc: Exception) -> bool:

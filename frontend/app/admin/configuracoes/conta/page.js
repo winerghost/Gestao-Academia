@@ -6,6 +6,9 @@ import {
   getMe, atualizarMe, trocarSenha,
   uploadAvatar, removerAvatar, usarGravatar,
 } from '../../../../lib/api'
+import FormField, { inputClass } from '@/components/FormField'
+import Toast from '@/components/Toast'
+import { useToast } from '@/hooks/useToast'
 
 // Converte data URL (canvas.toDataURL) em File para reutilizar o upload multipart.
 function dataUrlParaFile(dataUrl, nome = 'webcam.jpg') {
@@ -89,8 +92,10 @@ export default function ContaPage() {
 
   // Senha
   const [senha, setSenha] = useState({ senha_atual: '', senha_nova: '', confirmar: '' })
+  const [senhaErrors, setSenhaErrors] = useState({})
   const [salvandoSenha, setSalvandoSenha] = useState(false)
   const [msgSenha, setMsgSenha] = useState({ tipo: '', texto: '' })
+  const { toast, show } = useToast()
 
   useEffect(() => {
     if (!token) return
@@ -219,21 +224,21 @@ export default function ContaPage() {
   async function salvarSenha(e) {
     e.preventDefault()
     setMsgSenha({ tipo: '', texto: '' })
+    setSenhaErrors({})
     if (senha.senha_nova !== senha.confirmar) {
       setMsgSenha({ tipo: 'erro', texto: 'A confirmação não confere com a nova senha.' })
-      return
-    }
-    if (senha.senha_nova.length < 6) {
-      setMsgSenha({ tipo: 'erro', texto: 'A nova senha deve ter ao menos 6 caracteres.' })
       return
     }
     setSalvandoSenha(true)
     try {
       await trocarSenha(token, { senha_atual: senha.senha_atual, senha_nova: senha.senha_nova })
-      setMsgSenha({ tipo: 'ok', texto: 'Senha alterada com sucesso.' })
+      show('Senha alterada com sucesso!', 'success')
       setSenha({ senha_atual: '', senha_nova: '', confirmar: '' })
     } catch (err) {
-      setMsgSenha({ tipo: 'erro', texto: err.message })
+      setSenhaErrors(err.fields || {})
+      setMsgSenha({ tipo: 'erro', texto: Object.keys(err.fields || {}).length ? '' : err.message })
+      const first = Object.keys(err.fields || {})[0]
+      if (first) document.getElementById(first)?.focus()
     }
     setSalvandoSenha(false)
   }
@@ -371,21 +376,21 @@ export default function ContaPage() {
       <div className="bg-white rounded-xl shadow-sm p-5">
         <h2 className="text-sm font-semibold text-gray-700 mb-4">Alterar senha</h2>
         <form onSubmit={salvarSenha} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="sm:col-span-2">
-            <label className="text-xs text-gray-500 mb-1 block">Senha atual *</label>
-            <input type="password" className={input} style={ring} required placeholder="Digite sua senha atual" value={senha.senha_atual}
+          <FormField label="Senha atual" required error={senhaErrors.senha_atual} className="sm:col-span-2">
+            <input id="senha_atual" type="password" className={inputClass(!!senhaErrors.senha_atual)} required placeholder="Digite sua senha atual" value={senha.senha_atual}
               onChange={e => setSenha(s => ({ ...s, senha_atual: e.target.value }))} />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 mb-1 block">Nova senha *</label>
-            <input type="password" className={input} style={ring} required placeholder="Mínimo 6 caracteres" value={senha.senha_nova}
+          </FormField>
+
+          <FormField label="Nova senha" required error={senhaErrors.senha_nova}>
+            <input id="senha_nova" type="password" className={inputClass(!!senhaErrors.senha_nova)} required placeholder="Mínimo 8 caracteres" value={senha.senha_nova}
               onChange={e => setSenha(s => ({ ...s, senha_nova: e.target.value }))} />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 mb-1 block">Confirmar nova senha *</label>
-            <input type="password" className={input} style={ring} required placeholder="Repita a nova senha" value={senha.confirmar}
+          </FormField>
+
+          <FormField label="Confirmar nova senha" required error={senhaErrors.confirmar}>
+            <input id="confirmar" type="password" className={inputClass(!!senhaErrors.confirmar)} required placeholder="Repita a nova senha" value={senha.confirmar}
               onChange={e => setSenha(s => ({ ...s, confirmar: e.target.value }))} />
-          </div>
+          </FormField>
+
           <div className="sm:col-span-2 flex items-center gap-3">
             <button type="submit" className={btn} style={btnStyle} disabled={salvandoSenha}>
               {salvandoSenha ? 'Alterando...' : 'Alterar senha'}
@@ -394,6 +399,8 @@ export default function ContaPage() {
           </div>
         </form>
       </div>
+
+      {toast && <Toast message={toast.message} type={toast.type} />}
     </div>
   )
 }

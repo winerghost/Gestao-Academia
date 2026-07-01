@@ -7,7 +7,7 @@ from ..schemas import (
     VincularPlanoInstrutorSchema,
 )
 from ..validation import validate_body
-from ..errors import email_ja_cadastrado
+from ..errors import email_ja_cadastrado, erro_campo
 
 instrutores_bp = Blueprint("instrutores", __name__, url_prefix="/instrutores")
 
@@ -44,8 +44,9 @@ def criar(payload: InstrutorCreateSchema):
         user_id = user_resp.user.id
     except Exception as e:
         current_app.logger.exception("Falha ao criar usuário no Supabase Auth")
-        msg = "E-mail já cadastrado" if email_ja_cadastrado(e) else "Não foi possível criar o usuário"
-        return jsonify({"error": msg}), 400
+        if email_ja_cadastrado(e):
+            return erro_campo("email", "E-mail já cadastrado.", 400)
+        return jsonify({"error": "Não foi possível criar o usuário"}), 400
 
     # 2. Cria registro do instrutor
     try:

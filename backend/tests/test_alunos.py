@@ -205,8 +205,42 @@ def test_criar_aluno_email_duplicado_nao_vaza_detalhe(client):
 
         assert res.status_code == 400
         body = res.get_json()
-        assert body["error"] == "E-mail já cadastrado"
+        assert body["error"] == "E-mail já cadastrado."
+        assert body["fields"]["email"] == "E-mail já cadastrado."
         assert "detail" not in body   # não expõe o texto cru da exceção
+
+
+def test_criar_aluno_cpf_duplicado_retorna_409_com_field(client):
+    """CPF já cadastrado → 409 com campo específico 'cpf' em 'fields'.
+
+    Simula a falha de inserção por violação de unicidade de CPF (constraint
+    no banco). Deve retornar status 409 e indicar qual campo falhou.
+    """
+    with patch("app.alunos.routes.supabase") as mock_supa, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth)
+        # Simula sucesso do auth.admin.create_user
+        mock_supa.auth.admin.create_user.return_value = MagicMock(
+            user=MagicMock(id="new-user-id")
+        )
+        # Simula falha na inserção do aluno por CPF duplicado
+        exc = Exception("PostgreSQL error: duplicate key value violates unique constraint \"uq_alunos_cpf\"")
+        exc.code = "23505"  # SQLSTATE para unique violation
+        mock_supa.table.return_value.update.return_value.eq.return_value.execute.side_effect = exc
+        mock_supa.table.return_value.insert.side_effect = exc
+
+        res = client.post("/alunos", json={
+            "nome": "João Silva",
+            "email": "joao@academia.com",
+            "senha": "Senha@1234",
+            "cpf": "123.456.789-01",  # CPF já exists
+        }, headers=_auth_headers())
+
+        assert res.status_code == 409
+        body = res.get_json()
+        assert body["error"] == "CPF já cadastrado."
+        assert body["fields"]["cpf"] == "CPF já cadastrado."
+        assert "detail" not in body
 
 
 # ── Buscar por id (BOLA/IDOR via RLS) ─────────────────────────────────────────

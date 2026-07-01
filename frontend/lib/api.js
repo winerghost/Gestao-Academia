@@ -7,8 +7,15 @@
 //   - Queries ao banco, RLS e lógica de negócio ficam no Flask/Supabase.
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
 
+export class ApiError extends Error {
+  constructor(message, fields = {}) {
+    super(message)
+    this.fields = fields
+  }
+}
+
 // Função interna de fetch: injeta Content-Type e Bearer token automaticamente.
-// Lança Error com a mensagem do backend em caso de resposta não-ok.
+// Lança ApiError com a mensagem do backend e campos em caso de resposta não-ok.
 async function fetcher(endpoint, token, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) }
   // Endpoints públicos (ex.: login) chamam sem token.
@@ -17,7 +24,7 @@ async function fetcher(endpoint, token, options = {}) {
   const res = await fetch(`${API_URL}${endpoint}`, { ...options, headers })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(err.error || `Erro ${res.status}`)
+    throw new ApiError(err.error || `Erro ${res.status}`, err.fields || {})
   }
   if (res.status === 204) return null
   return res.json()
@@ -29,7 +36,7 @@ export async function downloadRelatorio(token, endpoint) {
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(err.error || 'Erro ao gerar relatório')
+    throw new ApiError(err.error || 'Erro ao gerar relatório', err.fields || {})
   }
   const blob = await res.blob()
   const cd = res.headers.get('Content-Disposition') || ''
@@ -67,7 +74,7 @@ export async function uploadAvatar(token, file) {
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(err.error || `Erro ${res.status}`)
+    throw new ApiError(err.error || `Erro ${res.status}`, err.fields || {})
   }
   return res.json()
 }
@@ -107,7 +114,7 @@ export async function adminUploadAvatarUsuario(token, userId, file) {
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(err.error || `Erro ${res.status}`)
+    throw new ApiError(err.error || `Erro ${res.status}`, err.fields || {})
   }
   return res.json()
 }

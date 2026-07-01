@@ -8,6 +8,7 @@ import {
   cancelarPlanoAluno, excluirPlanoAluno, getMensalidades, getPlanos,
   pagarMensalidade, getAvaliacoes, adminUploadAvatarUsuario, adminRemoverAvatarUsuario,
 } from '../../../../lib/api'
+import { mascaraTelefone } from '../../../../lib/masks'
 import { AlunoDetalheSkeleton } from './_skeleton'
 import CapturaFoto from '../_CapturaFoto'
 
@@ -239,7 +240,7 @@ export default function AlunoDetalhe() {
               </div>
               <div>
                 <label className="text-xs text-gray-500">Telefone</label>
-                <input className={input} value={form.telefone} onChange={e => setForm(f => ({ ...f, telefone: e.target.value }))} placeholder="(11) 99999-9999" />
+                <input className={input} value={form.telefone} onChange={e => setForm(f => ({ ...f, telefone: mascaraTelefone(e.target.value) }))} placeholder="(11) 99999-9999" maxLength="15" />
               </div>
               <div>
                 <label className="text-xs text-gray-500">Data de nascimento</label>

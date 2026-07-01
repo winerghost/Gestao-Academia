@@ -10,7 +10,7 @@ from ..schemas import (
     AlunoPlanoUpdateSchema,
 )
 from ..validation import validate_body
-from ..errors import email_ja_cadastrado, violacao_unicidade
+from ..errors import email_ja_cadastrado, violacao_unicidade, erro_campo
 from ..auth.avatar import (
     AvatarError,
     processar_imagem_base64,
@@ -96,8 +96,9 @@ def criar(payload: AlunoCreateSchema):
         user_id = user_resp.user.id
     except Exception as e:
         current_app.logger.exception("Falha ao criar usuário no Supabase Auth")
-        msg = "E-mail já cadastrado" if email_ja_cadastrado(e) else "Não foi possível criar o usuário"
-        return jsonify({"error": msg}), 400
+        if email_ja_cadastrado(e):
+            return erro_campo("email", "E-mail já cadastrado.", 400)
+        return jsonify({"error": "Não foi possível criar o usuário"}), 400
 
     # 2. Define o avatar: o Gravatar PREVALECE sobre a foto da webcam. Checamos
     #    o Gravatar em todo cadastro (o e-mail sempre existe), então um aluno com
@@ -134,10 +135,12 @@ def criar(payload: AlunoCreateSchema):
             "frequencia_habilitada": payload.frequencia_habilitada,
         }).execute()
         return jsonify(aluno_resp.data[0]), 201
-    except Exception:
+    except Exception as e:
         # Rollback: remove o usuário criado se o aluno falhar
         supabase.auth.admin.delete_user(user_id)
         current_app.logger.exception("Falha ao salvar aluno; usuário do Auth revertido")
+        if violacao_unicidade(e):
+            return erro_campo("cpf", "CPF já cadastrado.", 409)
         return jsonify({"error": "Não foi possível salvar o aluno"}), 400
 
 

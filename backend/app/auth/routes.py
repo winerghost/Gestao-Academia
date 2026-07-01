@@ -5,6 +5,7 @@ from ..extensions import limiter
 from ..config import Config
 from ..schemas import LoginSchema, ProfileUpdateSchema, ChangePasswordSchema
 from ..validation import validate_body
+from ..errors import erro_campo
 from .middleware import require_auth, _get_token
 from .avatar import (
     AvatarError,
@@ -128,10 +129,10 @@ def trocar_senha(payload: ChangePasswordSchema):
             {"email": email, "password": payload.senha_atual}
         )
     except AuthApiError:
-        return jsonify({"error": "Senha atual incorreta"}), 400
+        return erro_campo("senha_atual", "Senha atual incorreta.", 400)
 
     if payload.senha_nova == payload.senha_atual:
-        return jsonify({"error": "A nova senha deve ser diferente da atual"}), 400
+        return erro_campo("senha_nova", "A nova senha deve ser diferente da atual.", 400)
 
     # Grava a nova senha via Admin API.
     try:

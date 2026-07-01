@@ -3,6 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import { useAuth } from '../../../../hooks/useAuth'
 import { getConfigAcademia, atualizarConfigAcademia } from '../../../../lib/api'
+import { mascaraTelefone } from '../../../../lib/masks'
 
 const input = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2'
 const ring = { '--tw-ring-color': 'var(--cor-destaque)' }
@@ -136,7 +137,7 @@ export default function AcademiaPage() {
             <div>
               <label className="text-xs text-gray-500 mb-1 block">Telefone</label>
               <input className={input} style={ring} value={dados.telefone} placeholder="(11) 3333-4444"
-                onChange={e => setDados(d => ({ ...d, telefone: e.target.value }))} />
+                onChange={e => setDados(d => ({ ...d, telefone: mascaraTelefone(e.target.value) }))} maxLength="15" />
             </div>
             <div>
               <label className="text-xs text-gray-500 mb-1 block">E-mail de contato</label>

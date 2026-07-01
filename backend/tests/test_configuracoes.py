@@ -237,7 +237,7 @@ def test_trocar_senha_validacao(client):
 
 
 def test_trocar_senha_atual_incorreta(client):
-    """Senha atual errada → 400.
+    """Senha atual errada → 400 com campo 'senha_atual' em 'fields'.
 
     O handler revalida a senha ATUAL fazendo um sign_in_with_password antes
     de gravar a nova. Isso impede que um token roubado/compartilhado baste
@@ -258,7 +258,9 @@ def test_trocar_senha_atual_incorreta(client):
                           json={"senha_atual": "errada", "senha_nova": "novaSenha1"},
                           headers=_auth_headers())
         assert res.status_code == 400
-        assert "incorreta" in res.get_json()["error"].lower()
+        body = res.get_json()
+        assert body["error"] == "Senha atual incorreta."
+        assert body["fields"]["senha_atual"] == "Senha atual incorreta."
 
 
 def test_trocar_senha_sucesso(client):
@@ -276,6 +278,26 @@ def test_trocar_senha_sucesso(client):
                           headers=_auth_headers())
         assert res.status_code == 200
         mock_supa.auth.admin.update_user_by_id.assert_called_once()
+
+
+def test_trocar_senha_nova_igual_atual(client):
+    """Nova senha igual à atual → 400 com campo 'senha_nova' em 'fields'."""
+    with patch("app.auth.routes.supabase") as mock_supa, \
+         patch("app.auth.routes.get_anon_client") as mock_factory, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth)
+        mock_supa.auth.admin.get_user_by_id.return_value = MagicMock(
+            user=MagicMock(email="user@academia.com")
+        )
+        anon = MagicMock()  # login revalida com sucesso (senha_atual certa)
+        mock_factory.return_value = anon
+        res = client.post("/auth/change-password",
+                          json={"senha_atual": "mesma123", "senha_nova": "mesma123"},
+                          headers=_auth_headers())
+        assert res.status_code == 400
+        body = res.get_json()
+        assert body["error"] == "A nova senha deve ser diferente da atual."
+        assert body["fields"]["senha_nova"] == "A nova senha deve ser diferente da atual."
 
 
 # ── GET /configuracoes/usuarios ──────────────────────────────────────────────
@@ -741,6 +763,34 @@ def test_criar_usuario_email_invalido(client):
                                 "senha": "123456", "tipo": "admin"},
                           headers=_auth_headers())
         assert res.status_code == 422
+
+
+def test_criar_usuario_email_duplicado_retorna_400_com_field(client):
+    """E-mail já cadastrado → 400 com campo 'email' em 'fields'.
+
+    Simula falha do auth.admin.create_user (usuário já existe).
+    Deve retornar 400 e indicar qual campo falhou.
+    """
+    with patch("app.configuracoes.routes.supabase") as mock_supa, \
+         patch("app.auth.middleware.supabase") as mock_auth:
+        _mock_auth(mock_auth, tipo="admin")
+        # Simula exceção de e-mail já registrado
+        mock_supa.auth.admin.create_user.side_effect = Exception(
+            "AuthApiError: User already registered"
+        )
+
+        res = client.post("/configuracoes/usuarios",
+                          json={"nome": "Novo Admin",
+                                "email": "ja@existe.com",
+                                "senha": "Senha@1234",
+                                "tipo": "admin"},
+                          headers=_auth_headers())
+
+        assert res.status_code == 400
+        body = res.get_json()
+        assert body["error"] == "E-mail já cadastrado."
+        assert body["fields"]["email"] == "E-mail já cadastrado."
+        assert "detail" not in body
 
 
 # ── DELETE /configuracoes/usuarios/<id> ──────────────────────────────────────
