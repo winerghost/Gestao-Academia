@@ -1,33 +1,15 @@
 """Testes para rota de instrutores (POST/GET)."""
-import pytest
 from unittest.mock import patch, MagicMock
 
-from app import create_app
+from tests._helpers import mock_auth, auth_headers as _auth_headers
 
 _UID_SELF = "00000000-0000-0000-0000-000000000001"
 _UID_OTHER = "00000000-0000-0000-0000-000000000099"
 
 
-@pytest.fixture
-def client():
-    app = create_app()
-    app.config["TESTING"] = True
-    with app.test_client() as c:
-        yield c
-
-
-def _mock_auth(mock_auth, user_id=_UID_SELF, tipo="admin"):
-    """Helper: configura middleware de auth para retornar user_id e tipo dados."""
-    mock_auth.auth.get_session.return_value.session.access_token = "fake-token"
-    mock_auth.auth.get_user.return_value.user.id = user_id
-    mock_auth.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
-        data={"id": user_id, "tipo": tipo}
-    )
-
-
-def _auth_headers(token="fake-token"):
-    """Helper: headers com Authorization."""
-    return {"Authorization": f"Bearer {token}"}
+def _mock_auth(mock_supa, user_id=_UID_SELF, tipo="admin"):
+    """Delega ao helper canônico; user_id default = _UID_SELF (self-guards)."""
+    return mock_auth(mock_supa, tipo=tipo, user_id=user_id)
 
 
 # ── POST /instrutores ─────────────────────────────────────────────────────────

@@ -25,45 +25,14 @@ Padrão de mock:
 from datetime import date, timedelta
 import calendar
 from unittest.mock import patch, MagicMock
-import pytest
-from app import create_app
+
 from app.mensalidades.jobs import (
     job_atualizar_inadimplencia,
     job_gerar_mensalidades,
     criar_mensalidade,
     _proxima_vencimento,
 )
-
-
-@pytest.fixture
-def client():
-    app = create_app()
-    app.config["TESTING"] = True
-    with app.test_client() as c:
-        yield c
-
-
-def _auth_headers():
-    return {"Authorization": "Bearer token-fake"}
-
-
-def _mock_auth(mock_supa, tipo="admin"):
-    """Simula um usuário autenticado e com profile no banco.
-
-    O middleware (`require_auth`) faz duas chamadas ao Supabase:
-      1. `auth.get_user(token)` → valida o JWT e retorna o user.id.
-      2. `table("profiles").select("*").eq("id", ...).maybe_single().execute()`
-         → busca o profile para saber o tipo (admin/recepcionista/aluno).
-    Mockamos ambas aqui. O `tipo` controla o que o `require_role` vai ver.
-    """
-    user = MagicMock()
-    user.id = "user-uuid"
-    mock_supa.auth.get_user.return_value = MagicMock(user=user)
-    # Mockamos .single e .maybe_single: o middleware usa .maybe_single (B-3),
-    # mas alguns testes legados podem usar .single. Cobrir os dois é seguro.
-    perfil = MagicMock(data={"tipo": tipo})
-    mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = perfil
-    mock_supa.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = perfil
+from tests._helpers import mock_auth as _mock_auth, auth_headers as _auth_headers
 
 
 # ── Cálculo de juros ──────────────────────────────────────────────────────────

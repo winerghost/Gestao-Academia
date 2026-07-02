@@ -34,10 +34,9 @@ Padrão de mock (constantes UUID):
 import io
 from unittest.mock import patch, MagicMock
 
-import pytest
 from PIL import Image
 
-from app import create_app
+from tests._helpers import mock_auth, auth_headers as _auth_headers
 
 # ── Constantes UUID ────────────────────────────────────────────────────────────
 # UUID válidos para path params. Flask <uuid:...> rejeita strings não-UUID.
@@ -60,33 +59,14 @@ def _png_bytes():
     return buf.getvalue()
 
 
-@pytest.fixture
-def client():
-    app = create_app()
-    app.config["TESTING"] = True
-    with app.test_client() as c:
-        yield c
-
-
-def _auth_headers():
-    return {"Authorization": "Bearer token-fake"}
-
-
 def _mock_auth(mock_supa, tipo="admin", ativo=True):
-    """Simula usuário logado com tipo e status ativo definidos.
+    """Delega ao helper canônico fixando user.id = _UID_SELF (self-guards).
 
-    `user.id = _UID_SELF` é crítico para os self-guards:
-      - DELETE /usuarios/_UID_SELF → 400 (não pode excluir a si mesmo)
-      - PATCH /usuarios/_UID_SELF/tipo → 400 (não pode mudar o próprio tipo)
-      - PATCH /usuarios/_UID_SELF/status → 400 (não pode desativar a si mesmo)
-    Se `ativo=False`, o middleware retorna 403 imediatamente (conta desativada).
+    O user.id ser _UID_SELF é crítico: DELETE/PATCH em /usuarios/_UID_SELF
+    deve bater no bloqueio de auto-edição (400). ativo=False exercita o
+    gate de conta desativada (403).
     """
-    user = MagicMock()
-    user.id = _UID_SELF  # define quem é o "eu" para os self-guards
-    mock_supa.auth.get_user.return_value = MagicMock(user=user)
-    perfil = MagicMock(data={"tipo": tipo, "ativo": ativo})
-    mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = perfil
-    mock_supa.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = perfil
+    return mock_auth(mock_supa, tipo=tipo, user_id=_UID_SELF, ativo=ativo)
 
 
 # ── GET /configuracoes/academia ──────────────────────────────────────────────

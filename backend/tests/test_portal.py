@@ -1,27 +1,11 @@
 from unittest.mock import patch, MagicMock
-import pytest
-from app import create_app
 
-
-@pytest.fixture
-def client():
-    app = create_app()
-    app.config["TESTING"] = True
-    with app.test_client() as c:
-        yield c
-
-
-def _auth_headers():
-    return {"Authorization": "Bearer token-fake"}
+from tests._helpers import mock_auth, auth_headers as _auth_headers
 
 
 def _mock_auth(mock_supa):
-    user = MagicMock()
-    user.id = "user-uuid"
-    mock_supa.auth.get_user.return_value = MagicMock(user=user)
-    perfil = MagicMock(data={"tipo": "aluno"})
-    mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = perfil
-    mock_supa.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = perfil
+    """Portal é área do aluno — o usuário logado nos testes é sempre 'aluno'."""
+    return mock_auth(mock_supa, tipo="aluno")
 
 
 # ── /portal/me ────────────────────────────────────────────────────────────────

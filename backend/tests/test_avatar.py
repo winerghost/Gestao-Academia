@@ -4,29 +4,9 @@ from unittest.mock import patch, MagicMock
 import pytest
 from PIL import Image
 
-from app import create_app
 from app.auth.avatar import processar_imagem, url_gravatar, AvatarError
 
-
-@pytest.fixture
-def client():
-    app = create_app()
-    app.config["TESTING"] = True
-    with app.test_client() as c:
-        yield c
-
-
-def _auth_headers():
-    return {"Authorization": "Bearer token-fake"}
-
-
-def _mock_auth(mock_supa, tipo="admin", ativo=True):
-    user = MagicMock()
-    user.id = "user-uuid"
-    mock_supa.auth.get_user.return_value = MagicMock(user=user)
-    perfil = MagicMock(data={"tipo": tipo, "ativo": ativo})
-    mock_supa.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = perfil
-    mock_supa.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = perfil
+from tests._helpers import mock_auth as _mock_auth, auth_headers as _auth_headers
 
 
 def _png_bytes(size=(40, 20), color=(200, 30, 30)):
